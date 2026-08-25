@@ -1,0 +1,61 @@
+Nightingale — Care Note — Attribution
+======================================
+
+Nightingale is a 72-hour hackathon build: a shared, longitudinal patient
+"Care Note" clinic web application with role-based collaboration, AI-scribed
+notes with deterministic No-PHI redaction, span-stable provenance, and a
+glanceable Top Card.
+
+Open-source software used
+-------------------------
+
+Backend (Python / FastAPI)
+    - FastAPI           https://github.com/fastapi/fastapi            (MIT)
+    - Uvicorn           https://github.com/encode/uvicorn             (BSD-3-Clause)
+    - SQLAlchemy        https://github.com/sqlalchemy/sqlalchemy      (MIT)
+    - psycopg3          https://github.com/psycopg/psycopg            (LGPL-3.0)
+    - Pydantic          https://github.com/pydantic/pydantic          (MIT)
+    - PyJWT             https://github.com/jpadilla/pyjwt             (MIT)
+    - Passlib           https://github.com/passlib/passlib            (BSD-3-Clause)
+    - pytest            https://github.com/pytest-dev/pytest          (MIT)
+    - pytest-asyncio    https://github.com/pytest-dev/pytest-asyncio  (Apache-2.0)
+    - httpx             https://github.com/encode/httpx               (BSD-3-Clause)
+    - ruff              https://github.com/astral-sh/ruff             (MIT)
+    - mypy              https://github.com/python/mypy                (MIT)
+
+Frontend (TypeScript / React)
+    - React             https://github.com/facebook/react             (MIT)
+    - Vite              https://github.com/vitejs/vite                (MIT)
+    - TypeScript        https://github.com/microsoft/TypeScript       (Apache-2.0)
+    - Tailwind CSS      https://github.com/tailwindlabs/tailwindcss   (MIT)
+    - Autoprefixer      https://github.com/postcss/autoprefixer       (MIT)
+    - PostCSS           https://github.com/postcss/postcss            (MIT)
+
+Infrastructure
+    - PostgreSQL 16     https://www.postgresql.org/                   (PostgreSQL License)
+    - Docker            https://www.docker.com/                       (Apache-2.0)
+    - Docker Compose    https://github.com/docker/compose             (Apache-2.0)
+
+Security model
+    - Row-Level Security is enforced natively by PostgreSQL (FORCE ROW LEVEL
+      SECURITY + role-scoped policies). No third-party authorization library
+      is used for RLS; the SECURITY DEFINER functions and policies are
+      hand-authored in backend/app/db/rls.sql.
+
+AI-assisted development
+-----------------------
+This codebase was generated and orchestrated with Claude Code (Anthropic)
+under a multi-agent workflow during a single overnight session. The
+requirements breakdown, architecture, SQL/RLS policies, API routes, tests,
+and frontend were authored by Claude Code agents; the human team member
+specified the product, chose the stack, and reviewed the milestone commits.
+
+The "AI Scribe" feature routes note text through a bundled mock LLM service
+(backend/services/mock_llm.py) — no external model API is called in this
+demo. All redaction is deterministic and local (regex + lexicon); an LLM is
+never used to redact.
+
+Mock data
+---------
+All patients, staff, clinicians, notes, and PHI patterns are synthetic and
+seeded (backend/app/seed.py). Any resemblance to real persons is coincidental.

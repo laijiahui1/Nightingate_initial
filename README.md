@@ -10,6 +10,34 @@ provenance-first AI-scribed notes. See `docs/` for the full design package
 
 ---
 
+## Features
+
+- **Care Note timeline** — a single longitudinal note per patient: intake,
+  AI-scribed consult summaries, care plans, reviews, follow-ups. Every entry
+  carries its `author_role`, risk level, and provenance (who wrote what).
+- **Top Card (P95 ≤ 300 ms)** — a precomputed glance per patient: recency +
+  risk + entity importance (allergy boost) + open actions + learned boost, so
+  the highest-signal items surface instantly.
+- **AI Scribe** — paste a raw transcript; every PHI span (names, NRIC/FIN, IDs,
+  phones) is deterministically redacted *before* the model sees it, and the
+  summary is ingested as a `system`-authored entry with a resolvable
+  provenance pointer. The redaction mask (category counts only) is persisted.
+- **Collaboration** — threaded comments with `@mention` notifications and
+  unread badges, tasks with assignee/priority/status/due, revision history
+  with version restore, and deterministic conflict handling (a same-section
+  race is never silently dropped).
+- **Risk highlights** — a deterministic generator ranks risk phrases and
+  freezes each span at `(entry_id, offset_start, offset_end)` so it always
+  resolves. Accept / reject transitions feed the learning loop and audit log.
+- **Self-learning importance** — accept/reject teaches `learning_weight` for
+  the entry's extracted entities; a suggestions endpoint and the Top Card rank
+  by learned importance.
+- **Data decay** — stale, open-work-free entries archive to `entry_archive`
+  (admin-triggered, **clinic-scoped**) and restore on demand, so the note
+  stays longitudinal without accumulating dead weight.
+
+---
+
 ## Setup & Run
 
 ### Prerequisites
