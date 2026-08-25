@@ -49,3 +49,8 @@ coverage/
 *.sqlite3
 data/
 tmp/
+
+# ---- Local orchestration state (not part of deliverables) ----
+.omc/
+.orc/
+.orchestration/
