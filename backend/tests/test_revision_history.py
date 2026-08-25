@@ -15,11 +15,6 @@ land (then these become the GREEN contract).
 
 import pytest
 
-pytestmark = pytest.mark.xfail(
-    reason="feature not yet implemented (revision history routes)",
-    strict=False,
-)
-
 
 @pytest.mark.asyncio
 async def test_edit_increments_version(clinician_client, db, entries):

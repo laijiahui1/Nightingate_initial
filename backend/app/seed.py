@@ -590,6 +590,34 @@ def _seed_entries(state: SeedState) -> None:
         created_at=_utc(2025, 4, 15, 10, 0),
     )
 
+    # Patient-visible care instructions (the patient-role demo needs content).
+    # Deliberately patient-safe: no NRIC/phone, plain English care plan.
+    _insert_entry(
+        state,
+        "e_patient_discharge",
+        clinic_key="meridian",
+        patient_key="p_alice",
+        author_user="u_marcus",
+        author_role="clinician",
+        entry_type="instruction",
+        title="Care Instructions — Alice Tan",
+        body=(
+            "Care instructions for Alice Tan.\n\n"
+            "Medications\n"
+            "- Take amlodipine 5 mg once daily in the morning.\n\n"
+            "Follow-up\n"
+            "- Attend your blood pressure review in 4 weeks.\n"
+            "- Complete 7 days of ambulatory blood pressure monitoring.\n\n"
+            "When to seek help\n"
+            "- Contact the clinic or seek urgent care if you feel chest pain, "
+            "severe dizziness, or faint."
+        ),
+        section="plan",
+        visibility="patient_visible",
+        risk_level="low",
+        created_at=_utc(2025, 4, 15, 12, 0),
+    )
+
     # Versioned manual entry: current version (v2) with v1/v2 snapshots below.
     _insert_entry(
         state,

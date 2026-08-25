@@ -19,11 +19,6 @@ API assertion fails. Remove the xfail markers once the routes land.
 import psycopg
 import pytest
 
-pytestmark = pytest.mark.xfail(
-    reason="feature not yet implemented (RBAC routes/guards)",
-    strict=False,
-)
-
 
 @pytest.mark.asyncio
 async def test_staff_cannot_edit_clinician_entry(role_conn, staff_client, entries):

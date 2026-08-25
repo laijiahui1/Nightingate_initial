@@ -16,11 +16,6 @@ fail — the RED state. Remove the xfail markers when the Phase 6 routes land.
 
 import pytest
 
-pytestmark = pytest.mark.xfail(
-    reason="feature not yet implemented (edit/version/concurrency endpoints)",
-    strict=False,
-)
-
 
 @pytest.mark.asyncio
 async def test_different_sections_do_not_clobber_each_other(

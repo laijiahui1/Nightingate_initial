@@ -104,8 +104,15 @@ def _with_db(url: str, dbname: str) -> str:
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"/{dbname}", parts.query, parts.fragment))
 
 
-def _app_url(admin_url: str) -> str:
-    """Derive the restricted ``app_nightingale`` URL from the admin URL."""
+def _app_url(admin_url: str, *, scheme: str | None = None) -> str:
+    """Derive the restricted ``app_nightingale`` URL from the admin URL.
+
+    ``scheme`` overrides the URL scheme. psycopg (v3) only accepts plain
+    ``postgresql://``, while SQLAlchemy selects the psycopg2 dialect for a bare
+    ``postgresql://`` URL — and psycopg2 is not installed. The app engine
+    therefore needs ``postgresql+psycopg://``, while the raw-psycopg pool keeps
+    the plain form.
+    """
     user = os.environ.get("TEST_APP_DATABASE_USER", "app_nightingale")
     password = os.environ.get("TEST_APP_DATABASE_PASSWORD", "dev_app_password_change_me")
     parts = urllib.parse.urlsplit(admin_url)
@@ -113,7 +120,9 @@ def _app_url(admin_url: str) -> str:
     netloc = f"{user}:{password}@{host}"
     if parts.port:
         netloc += f":{parts.port}"
-    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    return urllib.parse.urlunsplit(
+        (scheme or parts.scheme, netloc, parts.path, parts.query, parts.fragment)
+    )
 
 
 def _ident(name: str) -> str:
@@ -168,6 +177,7 @@ _ENTRY_TITLE_FRAGMENTS: dict[str, str] = {
     "e1_intake": "Intake",
     "e2_ai_doctor": "AI Doctor Consult Summary — 2025-04-15",
     "e3_care_plan": "Care Plan",
+    "e_patient_discharge": "Care Instructions",
     "e4_ai_nurse": "AI Nurse Consult Summary",
     "e5_ai_session": "AI Patient Session Summary — 2025-06-10",
     "e6_lab_handoff": "Handoff — lab results pending",
@@ -253,11 +263,16 @@ def _build_state(admin_url: str) -> dict:
                 (clinic, f"%{frag}%"),
             )
 
+        # Resolve the role maps inside the ``with`` block: `_roles` closes over
+        # `conn`, which is closed once the ``with`` exits.
+        roles = _roles(clinic)
+        roles_b = _roles(clinic_b)
+
     return {
         "clinic_id": clinic,
         "clinic_b_id": clinic_b,
-        "roles": _roles(clinic),
-        "roles_b": _roles(clinic_b),
+        "roles": roles,
+        "roles_b": roles_b,
         "patients": patients,
         "patients_b": patients_b,
         "entries": entries,
@@ -282,6 +297,9 @@ def test_database() -> dict:
     dbname = _db_name(admin_url)
     admin_test_url = _with_db(admin_url, dbname)
     app_url = _app_url(admin_test_url)
+    # The FastAPI app engine (app.db.session) uses SQLAlchemy, which needs the
+    # ``+psycopg`` dialect marker to pick psycopg (v3) rather than psycopg2.
+    app_sqlalchemy_url = _app_url(admin_test_url, scheme="postgresql+psycopg")
     maintenance_url = _with_db(admin_url, "postgres")
 
     saved_env = {k: os.environ.get(k) for k in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "SEED_DATABASE_URL")}
@@ -296,8 +314,10 @@ def test_database() -> dict:
         # Point every runner at the isolated fixture database.
         os.environ["MIGRATION_DATABASE_URL"] = admin_test_url
         os.environ["SEED_DATABASE_URL"] = admin_test_url
-        # The app itself connects as the RESTRICTED app_nightingale role.
-        os.environ["DATABASE_URL"] = app_url
+        # The app itself connects as the RESTRICTED app_nightingale role
+        # (SQLAlchemy needs the +psycopg dialect marker; the raw-psycopg pool
+        # uses the plain ``app_url``).
+        os.environ["DATABASE_URL"] = app_sqlalchemy_url
 
         # Apply migrations (roles.sql -> schema.sql -> rls.sql).
         from app.db import apply_migrations
@@ -418,12 +438,31 @@ def highlights(seed_db: dict, seed_state: dict) -> dict[str, object]:
 
 
 @pytest.fixture
-def db(pool: _ConnectionPool, seed_db: dict) -> psycopg.Connection:
-    """One ``app_nightingale`` connection from the pool (no RLS GUCs set)."""
+def db(pool: _ConnectionPool, seed_db: dict, seed_state: dict) -> psycopg.Connection:
+    """A read-back connection from the app_nightingale pool, SET ROLE'd admin_role.
+
+    The base ``app_nightingale`` role has no table privileges; tests use ``db`` to
+    read rows back (proving persistence beyond the API response), so it SETs LOCAL
+    ROLE admin_role + the seed clinic GUCs. admin_role has SELECT on every timeline
+    table (rls.sql) and is scoped to the Meridian clinic, matching the ``entries``
+    / ``comments`` fixtures. READ COMMITTED means committed API writes (on a
+    separate connection) become visible across statements within this transaction.
+    """
     conn = pool.checkout()
+    admin_uid = seed_state["roles"]["admin"][0]
+    clinic = seed_state["clinic_id"]
     try:
+        conn.execute("BEGIN")
+        conn.execute("SET LOCAL ROLE admin_role")
+        conn.execute("SELECT set_config('app.user_id', %s, true)", (str(admin_uid),))
+        conn.execute("SELECT set_config('app.role', 'admin', true)")
+        conn.execute("SELECT set_config('app.clinic_id', %s, true)", (str(clinic),))
         yield conn
     finally:
+        try:
+            conn.execute("ROLLBACK")
+        except psycopg.Error:
+            pass
         pool.checkin(conn)
 
 
@@ -440,12 +479,24 @@ def role_conn(pool: _ConnectionPool, roles: dict[str, tuple[object, object]]):
     (e.g. ``role_conn("staff", *roles_b["staff"])``).
     """
 
+    # Role name -> PostgreSQL role class (mirrors app.db.session.ROLE_CLASS_BY_NAME,
+    # but kept local so this module never imports app.db.session and builds its engine).
+    _role_class = {
+        "patient": "patient_role",
+        "staff": "staff_role",
+        "clinician": "clinician_role",
+        "admin": "admin_role",
+    }
+
     @contextlib.contextmanager
     def _factory(role: str, user_id: object | None = None, clinic_id: object | None = None):
         uid, cid = roles[role] if (user_id is None or clinic_id is None) else (user_id, clinic_id)
         conn = pool.checkout()
         try:
             conn.execute("BEGIN")
+            # The base app_nightingale role has NO table privileges; SET LOCAL ROLE
+            # into the role class so the connection acts as that class under RLS.
+            conn.execute(f"SET LOCAL ROLE {_role_class[role]}")
             conn.execute("SELECT set_config('app.user_id', %s, true)", (str(uid),))
             conn.execute(
                 "SELECT set_config('app.role', %s, true), set_config('app.clinic_id', %s, true)",
@@ -454,7 +505,7 @@ def role_conn(pool: _ConnectionPool, roles: dict[str, tuple[object, object]]):
             yield conn
         finally:
             try:
-                conn.execute("ROLLBACK")  # GUCs are transaction-local: reset here
+                conn.execute("ROLLBACK")  # GUCs + role are transaction-local: reset here
             except psycopg.Error:
                 pass
             pool.checkin(conn)
