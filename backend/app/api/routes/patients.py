@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api.deps import Actor, get_current_actor
+from app.api.routes.tasks import list_tasks
 from app.api.schemas import AiScribeRequest
 from app.db.session import ROLE_CLASS_BY_NAME, get_db
 from app.services.llm_gateway import LLMGatewayError, build_prompt, chat
@@ -108,7 +109,8 @@ def _list_comments(db: Session, patient_id: uuid.UUID) -> list[dict]:
     rows = db.execute(
         text(
             """
-            SELECT id, entry_id, parent_id, author_role, body, status, created_at
+            SELECT id, entry_id, parent_id, author_role, body, status, created_at,
+                   patient_id, author_id, resolved_by, resolved_at, updated_at
             FROM comment
             WHERE patient_id = :pid
             ORDER BY created_at ASC
@@ -143,9 +145,12 @@ def get_patient_bundle(
     actor: Actor = Depends(get_current_actor),
 ) -> dict:
     _patient_visible(db, patient_id)
+    # Patients have no SELECT grant on `task` — never query it for them.
+    tasks = [] if actor.role == "patient" else list_tasks(db, patient_id)
     return {
         "entries": _list_entries(db, patient_id, actor),
         "comments": _list_comments(db, patient_id),
+        "tasks": tasks,
     }
 
 

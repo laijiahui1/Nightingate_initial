@@ -1,7 +1,9 @@
 // Nightingale Care Note — API client and shared types.
 //
 // Talks to the FastAPI backend at the CORS-enabled origin. Single API_BASE
-// const as required by the M2 contract.
+// const as required by the M2 contract. M3 adds collaboration types and
+// methods: comments (threaded + resolve), @mentions, tasks, users, and entry
+// revision history.
 
 export const API_BASE = 'http://localhost:8000';
 
@@ -13,6 +15,12 @@ export type ScribeType =
   | 'ai_doctor_consult_summary'
   | 'ai_nurse_consult_summary'
   | 'ai_patient_session_summary';
+
+export type CommentVisibility = 'internal' | 'patient_visible';
+
+export type TaskStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
+
+export type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
 // Demo login emails per role (from backend/app/seed.py, Meridian clinic).
 export const DEMO_EMAILS: Record<Role, string> = {
@@ -61,19 +69,105 @@ export interface EntrySummary {
   ai: EntryAiMeta | null;
 }
 
+export interface CommentCreate {
+  body: string;
+  parent_id?: string | null;
+  visibility?: CommentVisibility | null;
+}
+
 export interface CommentSummary {
   id: string;
   entry_id: string;
   parent_id: string | null;
   author_role: EntryAuthorRole;
+  author_id: string | null;
+  patient_id: string | null;
   body: string;
   status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface TaskCreate {
+  title: string;
+  description?: string | null;
+  entry_id?: string | null;
+  assignee_id: string;
+  priority?: TaskPriority;
+  due_at?: string | null;
+}
+
+export interface TaskUpdate {
+  title?: string | null;
+  description?: string | null;
+  status?: TaskStatus | null;
+  assignee_id?: string | null;
+  priority?: TaskPriority | null;
+  due_at?: string | null;
+}
+
+export interface TaskSummary {
+  id: string;
+  patient_id: string;
+  entry_id: string | null;
+  assignee_id: string;
+  assigner_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  completed_at: string | null;
+}
+
+export interface UserSummary {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
+export interface MentionContext {
+  comment_body: string | null;
+  comment_author_role: string | null;
+  entry_title: string | null;
+  entry_id: string | null;
+  patient_name: string | null;
+  patient_id: string | null;
+}
+
+export interface MentionSummary {
+  id: string;
+  comment_id: string | null;
+  entry_id: string | null;
+  mentioned_user_id: string;
+  created_by: string | null;
+  read_at: string | null;
+  created_at: string;
+  context: MentionContext | null;
+}
+
+export interface VersionRow {
+  id: number;
+  version: number;
+  body: string;
+  delta_from_prev: Record<string, unknown> | null;
+  author_role: string | null;
+  author_id: string | null;
+  change_summary: string | null;
+  conflict_flag: boolean;
+  conflict_of: number | null;
   created_at: string;
 }
 
 export interface PageBundle {
   entries: EntrySummary[];
   comments: CommentSummary[];
+  tasks: TaskSummary[];
 }
 
 export interface GlanceItem {
@@ -121,6 +215,24 @@ export interface EditedEntry {
   version: number;
   body: string;
   updated_at: string | null;
+}
+
+export interface RevertResult {
+  id: string;
+  version: number;
+  body: string;
+}
+
+export interface ResolveResult {
+  id: string;
+  status: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+}
+
+export interface MarkReadResult {
+  id: string;
+  read_at: string;
 }
 
 /** Error carrying the HTTP status so the UI can special-case 403. */
@@ -202,5 +314,46 @@ export const api = {
       method: 'PUT',
       token,
       body: { body, base_version: baseVersion },
+    }),
+
+  // --- M3 collaboration --------------------------------------------------
+
+  createComment: (token: string, entryId: string, payload: CommentCreate) =>
+    request<CommentSummary>(`/api/entries/${entryId}/comments`, {
+      method: 'POST',
+      token,
+      body: payload,
+    }),
+
+  resolveComment: (token: string, commentId: string) =>
+    request<ResolveResult>(`/api/comments/${commentId}/resolve`, { method: 'POST', token }),
+
+  unresolveComment: (token: string, commentId: string) =>
+    request<ResolveResult>(`/api/comments/${commentId}/unresolve`, { method: 'POST', token }),
+
+  tasks: (token: string, patientId: string) =>
+    request<TaskSummary[]>(`/api/patients/${patientId}/tasks`, { token }),
+
+  createTask: (token: string, patientId: string, payload: TaskCreate) =>
+    request<TaskSummary>(`/api/patients/${patientId}/tasks`, { method: 'POST', token, body: payload }),
+
+  updateTask: (token: string, taskId: string, patch: TaskUpdate) =>
+    request<TaskSummary>(`/api/tasks/${taskId}`, { method: 'PATCH', token, body: patch }),
+
+  users: (token: string) => request<UserSummary[]>('/api/users', { token }),
+
+  unreadMentions: (token: string) => request<MentionSummary[]>('/api/mentions/unread', { token }),
+
+  markMentionRead: (token: string, mentionId: string) =>
+    request<MarkReadResult>(`/api/mentions/${mentionId}/read`, { method: 'POST', token }),
+
+  entryHistory: (token: string, entryId: string) =>
+    request<VersionRow[]>(`/api/entries/${entryId}/history`, { token }),
+
+  revertEntry: (token: string, entryId: string, targetVersion: number) =>
+    request<RevertResult>(`/api/entries/${entryId}/revert`, {
+      method: 'POST',
+      token,
+      body: { target_version: targetVersion },
     }),
 };

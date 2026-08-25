@@ -1,9 +1,14 @@
-"""Entry edit/revert routes, wired to the SECURITY DEFINER save/revert paths.
+"""Entry edit/revert/history routes, wired to the SECURITY DEFINER save/revert paths.
 
 ``save_entry`` / ``revert_entry`` (rls.sql) run as the owner and bypass RLS, so
 they validate clinic/author_role/section explicitly. The routes call them only
 after :func:`get_current_actor` has SET ROLE'd the session and set the GUCs, and
 map their Postgres exceptions to 403/404/422 without leaking existence.
+
+The M3 fix resolves ``role_arg`` explicitly (never passing ``actor.role`` raw):
+``admin`` is not a valid ``entry_author_role`` value, so an admin edit/revert
+passes the entry's own author_role instead; a cross-role writer is rejected 403
+before it can smuggle a role into the SECURITY DEFINER function.
 """
 
 from __future__ import annotations
@@ -41,6 +46,52 @@ def _raise_for_entry_error(exc: Exception) -> None:
     raise HTTPException(status_code=422, detail="entry operation failed")
 
 
+def _resolve_role_arg(db: Session, entry_id: uuid.UUID, actor: Actor) -> str:
+    """Resolve the ``entry_author_role`` to pass to save/revert.
+
+    Raises 404 when the entry is out of scope (cross-clinic / nonexistent) and
+    403 when the caller's role cannot write the entry (write isolation).
+    """
+    row = db.execute(
+        text(
+            "SELECT author_role FROM entry WHERE id = :id AND clinic_id = app_clinic_id()"
+        ),
+        {"id": str(entry_id)},
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="entry not found")
+
+    entry_author_role = row["author_role"]
+    if actor.role == "admin":
+        return entry_author_role  # admin may edit any in-clinic entry
+    if actor.role == entry_author_role:
+        return actor.role
+    raise HTTPException(status_code=403, detail="forbidden")
+
+
+@router.get("/entries/{entry_id}/history")
+def entry_history(
+    entry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(get_current_actor),
+) -> list[dict]:
+    if actor.role == "patient":
+        raise HTTPException(status_code=403, detail="entry history is clinical-only")
+    rows = db.execute(
+        text(
+            """
+            SELECT id, version, body, delta_from_prev, author_role, author_id,
+                   change_summary, conflict_flag, conflict_of, created_at
+            FROM entry_version
+            WHERE entry_id = :eid
+            ORDER BY version DESC
+            """
+        ),
+        {"eid": str(entry_id)},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
 @router.put("/entries/{entry_id}")
 def edit_entry(
     entry_id: uuid.UUID,
@@ -48,6 +99,7 @@ def edit_entry(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ) -> dict:
+    role_arg = _resolve_role_arg(db, entry_id, actor)
     try:
         db.execute(
             text(
@@ -58,7 +110,7 @@ def edit_entry(
                 "body": payload.body,
                 "base_version": payload.base_version,
                 "user_id": str(actor.user_id),
-                "role": actor.role,
+                "role": role_arg,
             },
         )
         db.commit()
@@ -86,6 +138,7 @@ def revert_entry(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ) -> dict:
+    role_arg = _resolve_role_arg(db, entry_id, actor)
     try:
         db.execute(
             text(
@@ -95,7 +148,7 @@ def revert_entry(
                 "entry_id": str(entry_id),
                 "target_version": payload.target_version,
                 "user_id": str(actor.user_id),
-                "role": actor.role,
+                "role": role_arg,
             },
         )
         db.commit()

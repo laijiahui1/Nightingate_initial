@@ -13,6 +13,7 @@ import {
   type Role,
 } from './api';
 import { CareNoteView } from './CareNoteView';
+import { NotificationsBell } from './NotificationsBell';
 
 const ROLE_TABS: { role: Role; label: string }[] = [
   { role: 'patient', label: 'Patient' },
@@ -72,7 +73,9 @@ export default function App() {
               <p className="text-xs text-slate-500">Care note collaboration workspace</p>
             </div>
 
-            <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="flex items-center gap-2">
+              {login && <NotificationsBell token={login.access_token} role={login.role} />}
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
               {ROLE_TABS.map((tab) => {
                 const active = login?.role === tab.role;
                 return (
@@ -91,6 +94,7 @@ export default function App() {
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
 

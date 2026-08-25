@@ -1,5 +1,6 @@
 // Care Note main panel: Glance Top Card, longitudinal timeline, threaded
-// comments, AI Scribe box and inline edit on clinical entries.
+// comments (post/reply/resolve), clinical Tasks panel, per-entry revision
+// history, AI Scribe box and inline edit on clinical entries.
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -7,27 +8,17 @@ import {
   ApiError,
   messageOf,
   type CommentSummary,
-  type EntryAuthorRole,
   type EntrySummary,
   type GlanceCard,
+  type PageBundle,
   type PatientSummary,
   type Role,
   type ScribeType,
 } from './api';
-
-const ROLE_LABEL: Record<EntryAuthorRole, string> = {
-  system: 'AI',
-  patient: 'Patient',
-  staff: 'Staff',
-  clinician: 'Clinician',
-};
-
-const TYPE_STYLES: Record<EntryAuthorRole, string> = {
-  system: 'bg-violet-50 text-violet-700 ring-violet-200',
-  patient: 'bg-sky-50 text-sky-700 ring-sky-200',
-  staff: 'bg-slate-100 text-slate-700 ring-slate-200',
-  clinician: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-};
+import { Comments } from './Comments';
+import { HistoryPanel } from './HistoryPanel';
+import { TasksPanel } from './TasksPanel';
+import { formatDate, roleBadge, roleLabel } from './ui';
 
 const RISK_STYLES: Record<string, string> = {
   low: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
@@ -41,14 +32,6 @@ const SCRIBE_TYPES: { value: ScribeType; label: string }[] = [
   { value: 'ai_nurse_consult_summary', label: 'Nurse consult summary' },
   { value: 'ai_patient_session_summary', label: 'Patient session summary' },
 ];
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function sectionLabel(section: string | null): string {
   if (!section) return '';
@@ -76,7 +59,7 @@ interface CareNoteViewProps {
 }
 
 export function CareNoteView({ token, role, patient, patientId }: CareNoteViewProps) {
-  const [bundle, setBundle] = useState<{ entries: EntrySummary[]; comments: CommentSummary[] } | null>(null);
+  const [bundle, setBundle] = useState<PageBundle | null>(null);
   const [glance, setGlance] = useState<GlanceCard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -296,6 +279,11 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
             </section>
           )}
 
+          {/* Tasks — clinical roles only */}
+          {role !== 'patient' && (
+            <TasksPanel token={token} patientId={patientId} entries={entries} showToast={showToast} />
+          )}
+
           {/* Timeline */}
           <section>
             <h3 className="mb-3 text-sm font-semibold tracking-wide text-slate-900">
@@ -311,7 +299,6 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
                   <EntryCard
                     key={entry.id}
                     entry={entry}
-                    comments={commentsByEntry.get(entry.id) ?? []}
                     canEdit={canEdit(entry)}
                     editing={editingEntryId === entry.id}
                     editBody={editBody}
@@ -320,6 +307,27 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
                     onStartEdit={() => startEdit(entry)}
                     onCancelEdit={cancelEdit}
                     onSaveEdit={() => void saveEdit(entry)}
+                    historySection={
+                      role !== 'patient' ? (
+                        <HistoryPanel
+                          token={token}
+                          entryId={entry.id}
+                          currentVersion={entry.version}
+                          onRestored={() => void load()}
+                          showToast={showToast}
+                        />
+                      ) : undefined
+                    }
+                    commentsSection={
+                      <Comments
+                        token={token}
+                        role={role}
+                        entryId={entry.id}
+                        comments={commentsByEntry.get(entry.id) ?? []}
+                        onChanged={() => void load()}
+                        showToast={showToast}
+                      />
+                    }
                   />
                 ))}
               </div>
@@ -431,11 +439,12 @@ function GlanceCardView({ glance }: { glance: GlanceCard | null }) {
 
 interface EntryCardProps {
   entry: EntrySummary;
-  comments: CommentSummary[];
   canEdit: boolean;
   editing: boolean;
   editBody: string;
   saving: boolean;
+  historySection?: ReactNode;
+  commentsSection: ReactNode;
   onEditBodyChange: (value: string) => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -444,11 +453,12 @@ interface EntryCardProps {
 
 function EntryCard({
   entry,
-  comments,
   canEdit,
   editing,
   editBody,
   saving,
+  historySection,
+  commentsSection,
   onEditBodyChange,
   onStartEdit,
   onCancelEdit,
@@ -458,9 +468,9 @@ function EntryCard({
     <article className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3">
         <span
-          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${TYPE_STYLES[entry.author_role] ?? TYPE_STYLES.staff}`}
+          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${roleBadge(entry.author_role)}`}
         >
-          {ROLE_LABEL[entry.author_role] ?? entry.author_role}
+          {roleLabel(entry.author_role)}
         </span>
         <h4 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{entry.title}</h4>
         <time className="shrink-0 font-mono text-xs text-slate-400">
@@ -535,51 +545,15 @@ function EntryCard({
         )}
       </div>
 
-      {comments.length > 0 && (
+      {historySection && (
         <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
-          <ThreadedComments comments={comments} />
+          {historySection}
         </div>
       )}
+
+      <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+        {commentsSection}
+      </div>
     </article>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/* Threaded comments                                                   */
-/* ------------------------------------------------------------------ */
-
-function ThreadedComments({ comments }: { comments: CommentSummary[] }) {
-  const byParent = useMemo(() => {
-    const map = new Map<string | null, CommentSummary[]>();
-    for (const c of comments) {
-      const key = c.parent_id;
-      const list = map.get(key) ?? [];
-      list.push(c);
-      map.set(key, list);
-    }
-    return map;
-  }, [comments]);
-
-  const renderLevel = (parentId: string | null): ReactNode[] =>
-    (byParent.get(parentId) ?? []).map((c) => (
-      <div key={c.id} className={parentId !== null ? 'ml-5 border-l border-slate-200 pl-3' : ''}>
-        <div className="flex items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${TYPE_STYLES[c.author_role] ?? TYPE_STYLES.staff}`}
-          >
-            {ROLE_LABEL[c.author_role] ?? c.author_role}
-          </span>
-          <span className="font-mono text-[11px] text-slate-400">{formatDate(c.created_at)}</span>
-          {c.status === 'resolved' && (
-            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-              resolved
-            </span>
-          )}
-        </div>
-        <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-700">{c.body}</p>
-        {renderLevel(c.id)}
-      </div>
-    ));
-
-  return <div className="space-y-2">{renderLevel(null)}</div>;
 }

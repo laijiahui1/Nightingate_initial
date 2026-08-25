@@ -83,16 +83,16 @@ GRANT SELECT, INSERT ON entry, comment TO patient_role;
 
 -- ---- staff_role: clinic-scope reads everywhere; writes only their own role rows
 GRANT SELECT ON clinic, users, patient, provenance, entry, comment, entry_version,
-  highlight, ai_scribed_note, entry_entity, learning_interaction, learning_weight,
-  patient_glance, entry_archive, entry_version_archive TO staff_role;
+  highlight, ai_scribed_note, task, mention, entry_entity, learning_interaction,
+  learning_weight, patient_glance, entry_archive, entry_version_archive TO staff_role;
 GRANT INSERT, UPDATE ON entry, comment, task, mention TO staff_role;
 GRANT SELECT, INSERT ON highlight TO staff_role;
 GRANT UPDATE (status, resolved_by, resolved_at) ON highlight TO staff_role;
 
 -- ---- clinician_role: same shape as staff (clinician section ownership)
 GRANT SELECT ON clinic, users, patient, provenance, entry, comment, entry_version,
-  highlight, ai_scribed_note, entry_entity, learning_interaction, learning_weight,
-  patient_glance, entry_archive, entry_version_archive TO clinician_role;
+  highlight, ai_scribed_note, task, mention, entry_entity, learning_interaction,
+  learning_weight, patient_glance, entry_archive, entry_version_archive TO clinician_role;
 GRANT INSERT, UPDATE ON entry, comment, task, mention TO clinician_role;
 GRANT SELECT, INSERT ON highlight TO clinician_role;
 GRANT UPDATE (status, resolved_by, resolved_at) ON highlight TO clinician_role;
