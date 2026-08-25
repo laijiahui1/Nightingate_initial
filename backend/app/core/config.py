@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     app_db_password: str = "dev_app_password_change_me"  # APP_DB_PASSWORD
 
     # --- Auth / JWT ----------------------------------------------------
-    jwt_secret: str = "dev_secret_change_me"  # JWT_SECRET — override in .env
+    jwt_secret: str = "dev_secret_change_me_at_least_32_bytes"  # JWT_SECRET — override in .env
     jwt_algorithm: str = "HS256"  # JWT_ALGORITHM
     # Dev default is long (480 min) for demo convenience; docs/SECURITY.md T8
     # recommends a 15-minute access token for production.
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
         if self.app_env == "development":
             return self
         placeholders = {
-            "JWT_SECRET": self.jwt_secret in {"", "dev_secret_change_me"},
+            "JWT_SECRET": self.jwt_secret in {"", "dev_secret_change_me_at_least_32_bytes"},
             "APP_DB_PASSWORD": self.app_db_password in {"", "dev_app_password_change_me"},
         }
         missing = [name for name, is_placeholder in placeholders.items() if is_placeholder]

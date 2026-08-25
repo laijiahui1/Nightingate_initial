@@ -85,13 +85,18 @@ def _lexicon_alternation() -> str:
 
 
 def _name_pattern() -> str:
+    # Name words are matched with inline (?-i:...) so they stay
+    # case-sensitive-uppercase even though the master pattern is IGNORECASE.
+    # Otherwise every word after an honorific/label would be swallowed as a
+    # name (e.g. "Dr. Marcus Lee walked" -> "...Lee walked").
     return (
         # 1. Lexicon exact match, whole-word.
         rf"(?:\b(?:{_lexicon_alternation()})\b)"
-        # 2. Honorific-led names, e.g. "Dr. Marcus Lee".
-        rf"|(?:\b{_HONORIFICS}\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b)"
+        # 2. Honorific-led names, e.g. "Dr. Marcus Lee", "Dr. Fatimah Binte
+        #    Abdullah" (up to 3 capitalized words; \b stops at the next word).
+        rf"|(?:\b{_HONORIFICS}\.?\s+(?-i:[A-Z][a-z]+)(?:\s+(?-i:[A-Z][a-z]+)){{0,2}}\b)"
         # 3. Labelled names, e.g. "Patient: Alice Tan".
-        rf"|(?:\b(?:Name|Patient|Nurse|Doctor)\s*:\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)"
+        rf"|(?:\b(?:Name|Patient|Nurse|Doctor)\s*:\s*(?-i:[A-Z][a-z]+)(?:\s+(?-i:[A-Z][a-z]+)){{0,2}}\b)"
     )
 
 
@@ -123,6 +128,10 @@ def _phone_pattern() -> str:
         rf"|(?:(?<!\d)(?:8|9)\d{{7}}(?!\d))"
         # Singapore landline: 6xxxxxxx.
         rf"|(?:(?<!\d)6\d{{7}}(?!\d))"
+        # Split 4+4 with a space/hyphen, first group starting 6/8/9 (SG
+        # mobile/landline written as "9123 4567"). The [689] guard keeps
+        # dates/quantities like "2026 0826" or "7981 4523" out.
+        rf"|(?:(?<!\d)(?:[689]\d{{3}})[-\s]\d{{4}}(?!\d))"
     )
 
 
