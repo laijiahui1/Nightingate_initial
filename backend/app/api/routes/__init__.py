@@ -13,6 +13,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.comments import router as comments_router
 from app.api.routes.entries import router as entries_router
 from app.api.routes.health import router as health_router
+from app.api.routes.highlights import router as highlights_router
 from app.api.routes.mentions import router as mentions_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.tasks import router as tasks_router
@@ -28,3 +29,4 @@ api_router.include_router(comments_router, tags=["comments"])
 api_router.include_router(tasks_router, tags=["tasks"])
 api_router.include_router(mentions_router, tags=["mentions"])
 api_router.include_router(users_router, tags=["users"])
+api_router.include_router(highlights_router, tags=["highlights"])

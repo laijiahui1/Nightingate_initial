@@ -112,6 +112,11 @@ GRANT INSERT, UPDATE, DELETE ON clinic, users, patient, provenance, entry, comme
 -- ---- system_pipeline: AI ingestion only
 GRANT SELECT ON clinic, users, patient, learning_weight TO system_pipeline;
 GRANT INSERT ON entry, provenance, ai_scribed_note, highlight, entry_entity TO system_pipeline;
+-- hl_ins_system's WITH CHECK validates entry_id via `EXISTS (SELECT 1 FROM entry e
+-- WHERE e.id = entry_id AND e.clinic_id = app_clinic_id())`. That policy subquery
+-- runs with the pipeline's privileges, so the pipeline needs column-level SELECT
+-- on entry(id, clinic_id) to evaluate it. It still cannot read entry bodies.
+GRANT SELECT (id, clinic_id) ON entry TO system_pipeline;
 
 -- =============================================================================
 -- 3. ENABLE + FORCE row-level security on EVERY row table
@@ -254,6 +259,13 @@ CREATE POLICY entry_ins_system ON entry FOR INSERT TO system_pipeline
               AND author_role = 'system'
               AND EXISTS (SELECT 1 FROM patient p
                           WHERE p.id = patient_id AND p.clinic_id = app_clinic_id()));
+-- hl_ins_system's WITH CHECK validates entry_id via `EXISTS (SELECT 1 FROM entry e
+-- WHERE e.id = entry_id AND e.clinic_id = app_clinic_id())`. That policy subquery
+-- runs as system_pipeline and is subject to entry's RLS, so the pipeline needs a
+-- clinic-scoped SELECT policy on entry. It is paired with a column-level GRANT on
+-- (id, clinic_id) only — the pipeline still cannot read entry bodies (no PHI).
+CREATE POLICY entry_sel_system ON entry FOR SELECT TO system_pipeline
+  USING (clinic_id = app_clinic_id());
 
 -- -----------------------------------------------------------------------------
 -- comment — thread + resolve state  (§4.3)
@@ -331,11 +343,17 @@ CREATE POLICY hl_ins_system ON highlight FOR INSERT TO system_pipeline
               AND EXISTS (SELECT 1 FROM patient p WHERE p.id = patient_id AND p.clinic_id = app_clinic_id())
               AND EXISTS (SELECT 1 FROM entry e WHERE e.id = entry_id AND e.clinic_id = app_clinic_id()));
 -- accept/reject: staff & clinician may update status only; content is protected
--- below via column grants + the trg_highlight_immutable trigger
+-- below via column grants + the trg_highlight_immutable trigger.
+-- (Without an explicit WITH CHECK, PostgreSQL inherits the USING expression as
+-- the WITH CHECK, which would forbid the suggested->accepted/rejected transition
+-- it is meant to permit. The explicit WITH CHECK keeps new rows clinic-scoped
+-- while the USING clause still restricts the update to 'suggested' rows.)
 CREATE POLICY hl_upd_staff ON highlight FOR UPDATE TO staff_role
-  USING (clinic_id = app_clinic_id() AND status='suggested');
+  USING (clinic_id = app_clinic_id() AND status='suggested')
+  WITH CHECK (clinic_id = app_clinic_id());
 CREATE POLICY hl_upd_clin  ON highlight FOR UPDATE TO clinician_role
-  USING (clinic_id = app_clinic_id() AND status='suggested');
+  USING (clinic_id = app_clinic_id() AND status='suggested')
+  WITH CHECK (clinic_id = app_clinic_id());
 
 -- Content protection (defense in depth, since RLS is row-level):
 REVOKE UPDATE ON highlight FROM patient_role;
@@ -759,8 +777,7 @@ BEGIN
                               positive_count, negative_count, total_interactions,
                               last_seen_at)
   VALUES (p_clinic_id, p_feature_key,
-          CASE WHEN p_positive THEN GREATEST(-1.0, LEAST(2.0, p_delta))
-               ELSE GREATEST(-1.0, LEAST(2.0, -p_delta)) END,
+          GREATEST(-1.0, LEAST(2.0, p_delta)),
           CASE WHEN p_positive THEN 1 ELSE 0 END,
           CASE WHEN p_positive THEN 0 ELSE 1 END,
           1, now())

@@ -1,4 +1,4 @@
-"""Highlight provenance micro-tests (RED skeleton).
+"""Highlight provenance micro-tests (live contract).
 
 docs/PLAN.md Phase 7 + docs/SECURITY.md test mapping:
 
@@ -8,18 +8,9 @@ docs/PLAN.md Phase 7 + docs/SECURITY.md test mapping:
   source body — clicking a highlight jumps to the exact timeline span;
 - every highlight surfaced to a clinician carries a ``risk_reason`` and a
   resolvable provenance pointer.
-
-The highlight-generation / highlights-list endpoints do not exist yet, so the
-requests 404 and the tests fail — the RED state. Remove the xfail markers when
-the Phase 7 routes land.
 """
 
 import pytest
-
-pytestmark = pytest.mark.xfail(
-    reason="feature not yet implemented (highlight generation/provenance routes)",
-    strict=False,
-)
 
 
 @pytest.mark.asyncio

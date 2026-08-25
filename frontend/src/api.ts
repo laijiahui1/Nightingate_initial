@@ -210,6 +210,41 @@ export interface AiScribeResult {
   visibility: string;
 }
 
+// --- M4 risk highlights ---------------------------------------------------
+
+export type HighlightRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export type HighlightSource = 'ai' | 'rule' | 'manual';
+
+export type HighlightStatus = 'suggested' | 'accepted' | 'rejected';
+
+export interface HighlightGenerateRequest {
+  entry_id: string;
+}
+
+export interface HighlightSummary {
+  id: string;
+  patient_id: string;
+  entry_id: string;
+  offset_start: number;
+  offset_end: number;
+  quoted_text: string;
+  risk_reason: string;
+  risk_level: HighlightRiskLevel;
+  source: HighlightSource;
+  status: HighlightStatus;
+  confidence: number | null;
+  provenance_id: string | null;
+  created_by: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface HighlightListResult {
+  highlights: HighlightSummary[];
+}
+
 export interface EditedEntry {
   id: string;
   version: number;
@@ -355,5 +390,31 @@ export const api = {
       method: 'POST',
       token,
       body: { target_version: targetVersion },
+    }),
+
+  // --- M4 risk highlights ------------------------------------------------
+
+  highlights: (token: string, patientId: string) =>
+    request<HighlightListResult>(`/api/patients/${patientId}/highlights`, { token }),
+
+  generateHighlight: (token: string, patientId: string, entryId: string) =>
+    request<HighlightSummary>(`/api/patients/${patientId}/highlights/generate`, {
+      method: 'POST',
+      token,
+      body: { entry_id: entryId } satisfies HighlightGenerateRequest,
+    }),
+
+  acceptHighlight: (token: string, patientId: string, highlightId: string) =>
+    request<HighlightSummary>(`/api/patients/${patientId}/highlights/${highlightId}/accept`, {
+      method: 'POST',
+      token,
+      body: {},
+    }),
+
+  rejectHighlight: (token: string, patientId: string, highlightId: string) =>
+    request<HighlightSummary>(`/api/patients/${patientId}/highlights/${highlightId}/reject`, {
+      method: 'POST',
+      token,
+      body: {},
     }),
 };

@@ -10,22 +10,17 @@ import {
   type CommentSummary,
   type EntrySummary,
   type GlanceCard,
+  type HighlightSummary,
   type PageBundle,
   type PatientSummary,
   type Role,
   type ScribeType,
 } from './api';
 import { Comments } from './Comments';
+import { HighlightedBody } from './HighlightedBody';
 import { HistoryPanel } from './HistoryPanel';
 import { TasksPanel } from './TasksPanel';
-import { formatDate, roleBadge, roleLabel } from './ui';
-
-const RISK_STYLES: Record<string, string> = {
-  low: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  medium: 'bg-amber-50 text-amber-700 ring-amber-200',
-  high: 'bg-orange-50 text-orange-700 ring-orange-200',
-  critical: 'bg-red-50 text-red-700 ring-red-200',
-};
+import { RISK_STYLES, formatDate, roleBadge, roleLabel } from './ui';
 
 const SCRIBE_TYPES: { value: ScribeType; label: string }[] = [
   { value: 'ai_doctor_consult_summary', label: 'Doctor consult summary' },
@@ -74,6 +69,10 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
 
   const [toast, setToast] = useState<string | null>(null);
 
+  const [highlights, setHighlights] = useState<HighlightSummary[]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [busyHighlightId, setBusyHighlightId] = useState<string | null>(null);
+
   const showToast = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 6000);
@@ -92,11 +91,31 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
         } catch {
           setGlance(null);
         }
+        try {
+          const result = await api.highlights(token, patientId);
+          setHighlights(result.highlights);
+        } catch {
+          setHighlights([]);
+        }
+      } else {
+        setHighlights([]);
       }
     } catch (err) {
       setError(messageOf(err));
     } finally {
       setLoading(false);
+    }
+  }, [token, patientId, role]);
+
+  // Reload only the highlight list after an accept/reject/generate so the
+  // bundle stays put and the marks update in place.
+  const refreshHighlights = useCallback(async () => {
+    if (role === 'patient') return;
+    try {
+      const result = await api.highlights(token, patientId);
+      setHighlights(result.highlights);
+    } catch {
+      // Keep the last known highlights; the next full load will retry.
     }
   }, [token, patientId, role]);
 
@@ -120,6 +139,16 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
     }
     return map;
   }, [bundle]);
+
+  const highlightsByEntry = useMemo(() => {
+    const map = new Map<string, HighlightSummary[]>();
+    for (const h of highlights) {
+      const list = map.get(h.entry_id) ?? [];
+      list.push(h);
+      map.set(h.entry_id, list);
+    }
+    return map;
+  }, [highlights]);
 
   const canEdit = (entry: EntrySummary): boolean =>
     role !== 'patient' && (entry.author_role === 'staff' || entry.author_role === 'clinician');
@@ -167,6 +196,46 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
       showToast(`AI Scribe failed: ${messageOf(err)}`);
     } finally {
       setScribing(false);
+    }
+  };
+
+  const resolveHighlight = async (highlight: HighlightSummary, action: 'accept' | 'reject') => {
+    setBusyHighlightId(highlight.id);
+    try {
+      if (action === 'accept') {
+        await api.acceptHighlight(token, patientId, highlight.id);
+      } else {
+        await api.rejectHighlight(token, patientId, highlight.id);
+      }
+      await refreshHighlights();
+    } catch (err) {
+      showToast(`Could not ${action} highlight: ${messageOf(err)}`);
+    } finally {
+      setBusyHighlightId(null);
+    }
+  };
+
+  const generateHighlights = async () => {
+    const aiEntry = [...entries]
+      .filter((e) => e.author_role === 'system')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (!aiEntry) {
+      showToast('No AI-scribed entry is available to highlight.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      await api.generateHighlight(token, patientId, aiEntry.id);
+      await refreshHighlights();
+      showToast('Risk highlights generated and marked as suggested.');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        showToast(err.message);
+      } else {
+        showToast(`Could not generate highlights: ${messageOf(err)}`);
+      }
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -276,6 +345,26 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
                   </span>
                 </div>
               </div>
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                      Risk highlights
+                    </h4>
+                    <p className="mt-0.5 text-[11px] text-slate-500">
+                      Generate suggestions from the most recent AI-scribed entry.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void generateHighlights()}
+                    disabled={generating}
+                    className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {generating ? 'Generating…' : 'Generate highlights'}
+                  </button>
+                </div>
+              </div>
             </section>
           )}
 
@@ -303,6 +392,11 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
                     editing={editingEntryId === entry.id}
                     editBody={editBody}
                     saving={saving}
+                    highlights={highlightsByEntry.get(entry.id) ?? []}
+                    isClinical={role !== 'patient'}
+                    busyHighlightId={busyHighlightId}
+                    onAcceptHighlight={(h) => void resolveHighlight(h, 'accept')}
+                    onRejectHighlight={(h) => void resolveHighlight(h, 'reject')}
                     onEditBodyChange={setEditBody}
                     onStartEdit={() => startEdit(entry)}
                     onCancelEdit={cancelEdit}
@@ -443,8 +537,13 @@ interface EntryCardProps {
   editing: boolean;
   editBody: string;
   saving: boolean;
+  highlights: HighlightSummary[];
+  isClinical: boolean;
+  busyHighlightId: string | null;
   historySection?: ReactNode;
   commentsSection: ReactNode;
+  onAcceptHighlight: (highlight: HighlightSummary) => void;
+  onRejectHighlight: (highlight: HighlightSummary) => void;
   onEditBodyChange: (value: string) => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -457,8 +556,13 @@ function EntryCard({
   editing,
   editBody,
   saving,
+  highlights,
+  isClinical,
+  busyHighlightId,
   historySection,
   commentsSection,
+  onAcceptHighlight,
+  onRejectHighlight,
   onEditBodyChange,
   onStartEdit,
   onCancelEdit,
@@ -531,7 +635,14 @@ function EntryCard({
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{entry.body}</p>
+          <HighlightedBody
+            body={entry.body}
+            highlights={highlights}
+            isClinical={isClinical}
+            busyHighlightId={busyHighlightId}
+            onAccept={onAcceptHighlight}
+            onReject={onRejectHighlight}
+          />
         )}
 
         {!editing && canEdit && (

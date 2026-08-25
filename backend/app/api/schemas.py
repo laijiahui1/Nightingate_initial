@@ -218,3 +218,26 @@ class PageBundle(BaseModel):
     entries: list[EntrySummary]
     comments: list[CommentSummary]
     tasks: list[TaskSummary]
+
+
+class HighlightGenerateRequest(BaseModel):
+    entry_id: uuid.UUID
+
+
+class HighlightSummary(BaseModel):
+    id: uuid.UUID
+    patient_id: uuid.UUID
+    entry_id: uuid.UUID
+    offset_start: int
+    offset_end: int
+    quoted_text: str
+    risk_reason: str
+    risk_level: str
+    source: str
+    status: str
+    confidence: float | None
+    provenance_id: uuid.UUID
+    created_by: uuid.UUID | None
+    resolved_by: uuid.UUID | None
+    resolved_at: dt.datetime | None
+    created_at: dt.datetime

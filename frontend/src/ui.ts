@@ -16,6 +16,15 @@ export const ROLE_LABEL: Record<string, string> = {
   clinician: 'Clinician',
 };
 
+// Risk severity pills and highlight marks (medical-slate palette; reused by
+// the Glance card, entry risk badges, and M4 span highlighting).
+export const RISK_STYLES: Record<string, string> = {
+  low: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  medium: 'bg-amber-50 text-amber-700 ring-amber-200',
+  high: 'bg-orange-50 text-orange-700 ring-orange-200',
+  critical: 'bg-red-50 text-red-700 ring-red-200',
+};
+
 export function roleBadge(role: string | null | undefined): string {
   const key = role ?? 'system';
   return TYPE_STYLES[key] ?? TYPE_STYLES.system;
