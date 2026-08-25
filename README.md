@@ -28,7 +28,7 @@ This starts four services (also via `make up`):
 | Service | URL | Purpose |
 | --- | --- | --- |
 | `db` | `localhost:5432` | PostgreSQL 16 (named volume `nightingale_pgdata`, RLS) |
-| `mock-llm` | `localhost:5000` | Deterministic canned-output LLM (no live model) |
+| `mock-llm` | `localhost:5001` | Deterministic canned-output LLM (no live model; host port 5001 — macOS AirPlay Receiver owns 5000) |
 | `api` | `localhost:8000` | FastAPI; OpenAPI docs at `/docs` |
 | `web` | `localhost:5173` | Vite dev server (React + Tailwind PWA) |
 
