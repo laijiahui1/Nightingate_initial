@@ -241,3 +241,17 @@ class HighlightSummary(BaseModel):
     resolved_by: uuid.UUID | None
     resolved_at: dt.datetime | None
     created_at: dt.datetime
+
+
+class DecayRequest(BaseModel):
+    days: int = 730
+
+
+class Suggestion(BaseModel):
+    feature_key: str
+    entity_type: str
+    entity_value: str
+    entry_id: uuid.UUID
+    score: float
+    positive_count: int
+    total_interactions: int

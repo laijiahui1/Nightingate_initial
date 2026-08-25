@@ -976,6 +976,7 @@ BEGIN
     SELECT e.id, e.patient_id, e.clinic_id, e.section, e.entry_type, e.provenance_id, e.body
       FROM entry e
      WHERE e.is_decayed = false
+       AND e.clinic_id = app_clinic_id()
        AND e.created_at < now() - make_interval(days => p_threshold_days)
        AND NOT EXISTS (SELECT 1 FROM task t WHERE t.entry_id = e.id AND t.status IN ('open','in_progress'))
        AND NOT EXISTS (SELECT 1 FROM highlight h WHERE h.entry_id = e.id AND h.status IN ('suggested','accepted'))
@@ -984,11 +985,15 @@ BEGIN
     INSERT INTO entry_archive(entry_id, patient_id, clinic_id, body, section,
                               entry_type, provenance_id, archived_at)
     VALUES (c.id, c.patient_id, c.clinic_id, c.body, c.section,
-            c.entry_type, c.provenance_id, now());
+            c.entry_type, c.provenance_id, now())
+    ON CONFLICT (entry_id) DO NOTHING;      -- idempotent: re-decay must not crash
 
     INSERT INTO entry_version_archive(entry_id, clinic_id, version, body, author_role, created_at)
     SELECT ev.entry_id, c.clinic_id, ev.version, ev.body, ev.author_role, ev.created_at
-      FROM entry_version ev WHERE ev.entry_id = c.id;
+      FROM entry_version ev
+     WHERE ev.entry_id = c.id
+       AND NOT EXISTS (SELECT 1 FROM entry_version_archive eva
+                        WHERE eva.entry_id = ev.entry_id AND eva.version = ev.version);
 
     UPDATE entry SET is_decayed = true, body = '' WHERE id = c.id;
 
@@ -1021,6 +1026,7 @@ BEGIN
   UPDATE entry SET body = v_body, is_decayed = false, updated_at = now()
     WHERE id = p_entry_id;
   DELETE FROM entry_archive WHERE entry_id = p_entry_id;
+  DELETE FROM entry_version_archive WHERE entry_id = p_entry_id;
   PERFORM log_audit(NULL, 'system', 'system', 'entry', p_entry_id,
                     v_patient, v_clinic, NULL,
                     jsonb_build_object('restored_from', 'entry_archive'));

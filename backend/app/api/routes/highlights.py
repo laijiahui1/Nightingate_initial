@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import Actor, get_current_actor
 from app.api.routes._audit import audit
-from app.api.schemas import HighlightGenerateRequest, HighlightSummary
+from app.api.schemas import HighlightGenerateRequest, HighlightSummary, Suggestion
 from app.db.session import ROLE_CLASS_BY_NAME, get_db, set_app_context
 
 router = APIRouter()
@@ -46,7 +46,8 @@ _RISK_PHRASES: list[tuple[str, str, str, float]] = [
         "high",
         "Cardiologist referral indicated if BP remains elevated",
         0.90,
-    ),    ("dizziness", "medium", "Episodes of dizziness — possible side effect; monitor", 0.85),
+    ),
+    ("dizziness", "medium", "Episodes of dizziness — possible side effect; monitor", 0.85),
     ("monitor", "low", "Ongoing monitoring requested", 0.80),
 ]
 
@@ -347,3 +348,38 @@ def reject_highlight(
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="highlights are clinical-only")
     return _resolve_highlight(db, actor, patient_id, highlight_id, "rejected")
+
+
+@router.get("/patients/{patient_id}/highlights/suggestions")
+def list_suggestions(
+    patient_id: uuid.UUID,
+    q: str = "",
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(get_current_actor),
+) -> dict:
+    if actor.role == "patient":
+        raise HTTPException(status_code=403, detail="suggestions are clinical-only")
+    _patient_visible(db, patient_id)
+
+    rows = db.execute(
+        text(
+            """
+            SELECT ee.entry_id, ee.entity_type, ee.entity_value,
+                   ('entity:' || ee.entity_type || ':' || ee.entity_value) AS feature_key,
+                   COALESCE(lw.weight, 0.0) AS score,
+                   COALESCE(lw.positive_count, 0) AS positive_count,
+                   COALESCE(lw.total_interactions, 0) AS total_interactions
+              FROM entry_entity ee
+              JOIN entry e ON e.id = ee.entry_id AND e.patient_id = :pid
+              LEFT JOIN learning_weight lw
+                ON lw.clinic_id = ee.clinic_id
+               AND lw.feature_key = ('entity:' || ee.entity_type || ':' || ee.entity_value)
+             WHERE (:q = '' OR ee.entity_value ILIKE '%' || :q || '%'
+                    OR ee.entity_type ILIKE '%' || :q || '%')
+             ORDER BY score DESC, ee.entity_value ASC
+             LIMIT 20
+            """
+        ),
+        {"pid": str(patient_id), "q": q},
+    ).mappings().all()
+    return {"suggestions": [Suggestion(**dict(r)).model_dump() for r in rows]}

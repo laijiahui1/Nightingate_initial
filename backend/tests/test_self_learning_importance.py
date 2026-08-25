@@ -1,26 +1,12 @@
-"""Self-learning importance micro-test (RED skeleton, conceptual).
+"""Self-learning importance micro-test (M6, live).
 
-docs/PLAN.md Phase 8 + docs/DATA_SCHEMA.md §9:
-
-- pinning/accepting a highlight from an AI-scribed note records a
-  ``learning_interaction`` and persists a POSITIVE ``learning_weight`` for the
-  features extracted from that content (weights are persisted, survive restart);
-- SUBSEQUENT highlight suggestions for SIMILAR content must be ranked higher —
-  the persisted weight feeds the glance/highlight scorer.
-
-Conceptual per the brief: the exact feature-key normalization and scoring math
-are implementation-defined; this test pins the PERSISTENCE contract (pin ->
-interaction + weight) and the BOOST contract (similar content scores higher).
-No feature code exists yet, so the requests 404 and the tests fail — the RED
-state. Remove the xfail markers when the Phase 8 routes land.
+Accepting a highlight on an AI-scribed note records a ``learning_interaction``
+and persists a POSITIVE ``learning_weight`` for the note's extracted entities
+(``entity:<type>:<value>``), which then boosts the ``suggestions`` endpoint's
+ranking for matching content.
 """
 
 import pytest
-
-pytestmark = pytest.mark.xfail(
-    reason="feature not yet implemented (self-learning persistence + scoring)",
-    strict=False,
-)
 
 
 @pytest.mark.asyncio

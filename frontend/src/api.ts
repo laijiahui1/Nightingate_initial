@@ -270,6 +270,26 @@ export interface MarkReadResult {
   read_at: string;
 }
 
+// --- M6 self-learning importance + data decay --------------------------
+
+export interface Suggestion {
+  feature_key: string;
+  entity_type: string;
+  entity_value: string;
+  entry_id: string;
+  score: number;
+  positive_count: number;
+  total_interactions: number;
+}
+
+export interface SuggestionsResult {
+  suggestions: Suggestion[];
+}
+
+export interface DecayResponse {
+  decayed: number;
+}
+
 /** Error carrying the HTTP status so the UI can special-case 403. */
 export class ApiError extends Error {
   readonly status: number;
@@ -416,5 +436,20 @@ export const api = {
       method: 'POST',
       token,
       body: {},
+    }),
+
+  // --- M6 self-learning importance + data decay ------------------------
+
+  suggestions: (token: string, patientId: string, q: string) =>
+    request<SuggestionsResult>(
+      `/api/patients/${patientId}/highlights/suggestions?q=${encodeURIComponent(q)}`,
+      { token },
+    ),
+
+  decay: (token: string, days: number) =>
+    request<DecayResponse>('/api/admin/decay', {
+      method: 'POST',
+      token,
+      body: { days },
     }),
 };

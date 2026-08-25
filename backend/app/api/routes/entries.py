@@ -165,3 +165,37 @@ def revert_entry(
     if row is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return dict(row)
+
+
+@router.post("/entries/{entry_id}/restore")
+def restore_entry_route(
+    entry_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    actor: Actor = Depends(get_current_actor),
+) -> dict:
+    if actor.role == "patient":
+        raise HTTPException(status_code=403, detail="restore is clinical-only")
+
+    # Verify the entry is visible to the caller (RLS hides cross-clinic/missing).
+    visible = db.execute(
+        text("SELECT id FROM entry WHERE id = :id AND clinic_id = app_clinic_id()"),
+        {"id": str(entry_id)},
+    ).first()
+    if visible is None:
+        raise HTTPException(status_code=404, detail="entry not found")
+
+    try:
+        result = db.execute(
+            text("SELECT restore_entry(:eid) AS body"),
+            {"eid": str(entry_id)},
+        ).mappings().first()
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        msg = _error_text(exc)
+        if "no archived body" in msg:
+            raise HTTPException(status_code=404, detail="no archived body")
+        if "cross-clinic" in msg:
+            raise HTTPException(status_code=404, detail="entry not found")
+        raise HTTPException(status_code=422, detail="restore failed") from exc
+    return {"body": result["body"]}

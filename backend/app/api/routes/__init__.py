@@ -8,6 +8,7 @@ api_router root and re-mounted by main.py so the container healthcheck stays on
 
 from fastapi import APIRouter
 
+from app.api.routes.admin import router as admin_router
 from app.api.routes.audit import router as audit_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.comments import router as comments_router
@@ -21,6 +22,7 @@ from app.api.routes.users import router as users_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
+api_router.include_router(admin_router, tags=["admin"])
 api_router.include_router(patients_router, tags=["patients"])
 api_router.include_router(entries_router, tags=["entries"])
 api_router.include_router(audit_router, tags=["audit"])

@@ -19,6 +19,7 @@ import {
 import { Comments } from './Comments';
 import { HighlightedBody } from './HighlightedBody';
 import { HistoryPanel } from './HistoryPanel';
+import { ImportancePanel } from './ImportancePanel';
 import { TasksPanel } from './TasksPanel';
 import { RISK_STYLES, formatDate, roleBadge, roleLabel } from './ui';
 
@@ -72,6 +73,8 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
   const [highlights, setHighlights] = useState<HighlightSummary[]>([]);
   const [generating, setGenerating] = useState(false);
   const [busyHighlightId, setBusyHighlightId] = useState<string | null>(null);
+
+  const [decaying, setDecaying] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -129,6 +132,14 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
   }, [bundle]);
+
+  // The "open" AI-scribed entry: the most recent system-authored summary, the
+  // same selection the risk-highlight generator already targets.
+  const openAiEntry = useMemo(
+    () =>
+      entries.find((e) => e.author_role === 'system') ?? null,
+    [entries],
+  );
 
   const commentsByEntry = useMemo(() => {
     const map = new Map<string, CommentSummary[]>();
@@ -236,6 +247,22 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
       }
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // Admin-only data decay: archive entries stale past 730 days (M6).
+  const archiveStale = async () => {
+    setDecaying(true);
+    try {
+      const result = await api.decay(token, 730);
+      showToast(
+        `Archived ${result.decayed} stale ${result.decayed === 1 ? 'entry' : 'entries'}.`,
+      );
+      await load();
+    } catch (err) {
+      showToast(`Could not archive stale entries: ${messageOf(err)}`);
+    } finally {
+      setDecaying(false);
     }
   };
 
@@ -364,6 +391,40 @@ export function CareNoteView({ token, role, patient, patientId }: CareNoteViewPr
                     {generating ? 'Generating…' : 'Generate highlights'}
                   </button>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {/* Learned importance — clinical roles, open AI-scribed entry */}
+          {role !== 'patient' && openAiEntry && (
+            <ImportancePanel
+              token={token}
+              patientId={patientId}
+              entryId={openAiEntry.id}
+              onToast={showToast}
+            />
+          )}
+
+          {/* Archive stale entries — admin only */}
+          {role === 'admin' && (
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold tracking-wide text-slate-900">
+                    Archive stale entries
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Move entries with no recent activity (730+ days) to the archive.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void archiveStale()}
+                  disabled={decaying}
+                  className="rounded-md bg-slate-800 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {decaying ? 'Archiving…' : 'Archive stale entries'}
+                </button>
               </div>
             </section>
           )}
