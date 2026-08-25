@@ -51,19 +51,27 @@ Key constraints from the brief encoded here:
 
 1. **Route layer (FastAPI).** Every endpoint depends on `require_roles(...)` (from the verified session/JWT) and an object-scope helper `assert_clinic_access(patient_id)` / `assert_note_scope(note_id)` that resolves the resource against the actor's clinic before any query. Failing either returns 403 (404 for IDOR-style probes so existence is not leaked).
 2. **Service layer.** `NoteService.get_for(actor, note_id)` applies a per-role projection so response payloads never contain fields the role cannot see (defense against over-fetching and serializer mistakes).
-3. **Postgres RLS (data-level backstop).** Each transaction sets transaction-local claims:
+3. **Postgres RLS (data-level backstop).** The API connects as the restricted
+   LOGIN role `app_nightingale` (a `NOINHERIT` member of every RBAC role class;
+   see `roles.sql`). Each request transaction `SET ROLE`s into its role class,
+   then sets transaction-local claims (DATA_SCHEMA §4.1 — implemented by
+   `app/db/session.py` `set_app_context`):
    ```sql
-   SELECT set_config('app.actor_id',       $1, true);  -- local=true → transaction-scoped
-   SELECT set_config('app.actor_role',     $2, true);
-   SELECT set_config('app.actor_clinic_id',$3, true);
-   SELECT set_config('app.actor_patient_id',$4, true); -- null for non-patients
+   SET LOCAL ROLE <role_class>;                  -- patient_role / staff_role /
+                                                 -- clinician_role / admin_role /
+                                                 -- system_pipeline
+   SELECT set_config('app.user_id',  $1, true);  -- local=true → transaction-scoped
+   SELECT set_config('app.role',     $2, true);
+   SELECT set_config('app.clinic_id',$3, true);
    ```
+   Patient scoping is not a fourth GUC; it is derived through the
+   `app_patient_id()` helper (`SELECT id FROM patient WHERE user_id = app_user_id()`).
    Representative policy on `note_entries` (one row per timeline entry):
    ```sql
    CREATE POLICY read_notes ON note_entries FOR SELECT USING (
-     clinic_id = current_setting('app.actor_clinic_id')::uuid AND
-     CASE current_setting('app.actor_role')
-       WHEN 'patient'  THEN patient_id = current_setting('app.actor_patient_id')::uuid
+     clinic_id = app_clinic_id() AND
+     CASE app_role()
+       WHEN 'patient'  THEN patient_id = app_patient_id()
                          AND kind IN ('patient_insight','patient_summary')
        WHEN 'staff'    THEN kind IN ('ai_scribe_note','staff_note','clinician_section',
                                      'patient_insight','patient_summary')
@@ -74,18 +82,18 @@ Key constraints from the brief encoded here:
      END
    );
    CREATE POLICY write_own_role ON note_entries FOR UPDATE
-     USING (author_role = current_setting('app.actor_role') AND
-            clinic_id   = current_setting('app.actor_clinic_id')::uuid)
-     WITH CHECK (author_role = current_setting('app.actor_role') AND
-                 clinic_id   = current_setting('app.actor_clinic_id')::uuid);
+     USING (author_role = app_role() AND
+            clinic_id   = app_clinic_id())
+     WITH CHECK (author_role = app_role() AND
+                 clinic_id   = app_clinic_id());
    ```
-   - The **cannot-overwrite constraints are structural**: because UPDATE `USING` requires `author_role = app.actor_role`, a clinician's UPDATE can only ever see rows authored by clinicians; staff rows are invisible to the update, so "clinician overwrites staff" is impossible at the database level, not just in the API. A `WITH CHECK` that forces `author_role = app.actor_role` on INSERT/UPDATE also blocks role spoofing (staff creating a row labeled `clinician`).
+   - The **cannot-overwrite constraints are structural**: because UPDATE `USING` requires `author_role = app_role()`, a clinician's UPDATE can only ever see rows authored by clinicians; staff rows are invisible to the update, so "clinician overwrites staff" is impossible at the database level, not just in the API. A `WITH CHECK` that forces `author_role = app_role()` on INSERT/UPDATE also blocks role spoofing (staff creating a row labeled `clinician`).
    - **UI-only checks are insufficient** because: a crafted HTTP request bypasses the UI entirely; the browser devtools can re-enable buttons; and the database itself must remain safe even if a future bug in the middleware or a stray ORM query skips a check. RLS makes the DB the final authority; the README and brief must state this explicitly (deliverable requirement).
 
 ### Clinic isolation (multi-clinic tenancy)
 
 - Every patient, note, comment, version, highlight, task, and audit row carries `clinic_id`.
-- Every RLS policy predicates on `clinic_id = app.actor_clinic_id`.
+- Every RLS policy predicates on `clinic_id = app_clinic_id()`.
 - `GET /api/v1/patients/{id}` resolves the patient *within* the actor's clinic and returns 404 if absent — this is the IDOR defense (see threat model).
 - Patient IDs are UUIDs (not sequential ints) to defeat enumeration.
 
@@ -123,7 +131,7 @@ Any caller (ingest, highlight, voice, summary)
         └─ (optional) persist de-identified output; identifiers only via server-side templating
 ```
 
-- The gateway is the **only** module allowed to import/use the model SDK. A lint/test rule ("no direct model SDK imports outside `security/llm_gateway.py`") plus a pytest that monkeypatches the SDK and asserts the bytes leaving the process are PHI-free on **every** stream makes non-bypassability verifiable.
+- The gateway is the **only** module allowed to import/use the model SDK. A lint/test rule ("no direct model SDK imports outside `services/llm_gateway.py`") plus a pytest that monkeypatches the SDK and asserts the bytes leaving the process are PHI-free on **every** stream makes non-bypassability verifiable.
 - Redaction is **deterministic and local** (regex + lexicon), never LLM-based — using a model to redact would both add latency/cost and reintroduce the very failure mode it protects against.
 
 ### What gets redacted and how

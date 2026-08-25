@@ -1,0 +1,155 @@
+# Nightingale 72-hour build — one-command demo stack.
+#
+#   docker compose up            # starts db + mock-llm + api + web
+#   make migrate                 # roles + schema + rls via app.db.apply_migrations
+#   make seed                    # synthetic demo data via app.seed
+#
+# Every variable has a safe dev default (see .env.example). Copy .env.example
+# to .env and override the secrets before any non-local deployment.
+#
+# Conventions:
+#   - Migrations/seed are NOT auto-run by the db image. `make migrate`/`make seed`
+#     drive them inside the api container (apply_migrations.py / app.seed.py),
+#     because roles.sql needs CREATEROLE and the order roles -> schema -> rls is
+#     required (alphabetical /docker-entrypoint-initdb.d would break it).
+#   - The api service runs a single uvicorn worker (in-process WS fan-out).
+#   - The mock-llm service is an inline deterministic HTTP server (no builder
+#     owns a mock-llm source tree); the LLM builder may replace it.
+
+name: nightingale
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nightingale}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-nightingale}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  mock-llm:
+    # Deterministic canned-output LLM so tests/demos never depend on a live
+    # model (docs/ARCHITECTURE.md §2). Inline server keeps the compose file
+    # self-contained; swap this service for a real provider behind the
+    # LLMGateway (backend/app/services/llm_gateway.py) via LLM_MOCK=0.
+    image: python:3.12-alpine
+    restart: unless-stopped
+    ports:
+      - "${MOCK_LLM_PORT:-5000}:5000"
+    command:
+      - python
+      - -c
+      - |
+        import json
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        PAYLOAD = {
+            "role": "assistant",
+            "content": "MOCK LLM: deterministic canned summary. No live model was contacted.",
+            "model": "mock-llm",
+            "deterministic": True,
+        }
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def _send(self, code, body):
+                data = json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                self._send(200, {"status": "ok", "service": "mock-llm"})
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(length)
+                self._send(200, PAYLOAD)
+
+        if __name__ == "__main__":
+            HTTPServer(("0.0.0.0", 5000), Handler).serve_forever()
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://localhost:5000/healthz')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 3s
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      # Compose interpolation: defaults mirror .env.example; a real .env
+      # overrides them automatically (compose reads .env from the project dir).
+      #
+      # DATABASE_URL is the RESTRICTED application role (`app_nightingale`) —
+      # the API never connects as the bootstrap superuser. RLS is enforced
+      # server-side; per-request `SET ROLE` happens in app/db/session.py.
+      DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-app_nightingale}:${APP_DB_PASSWORD:-dev_app_password_change_me}@db:5432/${POSTGRES_DB:-nightingale}
+      # MIGRATION_DATABASE_URL is the bootstrap superuser (roles.sql needs
+      # CREATEROLE); used only by app.db.apply_migrations / app.seed.
+      MIGRATION_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-nightingale}:${POSTGRES_PASSWORD:-dev_password_change_me}@db:5432/${POSTGRES_DB:-nightingale}
+      JWT_SECRET: ${JWT_SECRET:-dev_secret_change_me}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: ${APP_PORT:-8000}
+      LLM_MOCK: ${LLM_MOCK:-1}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://mock-llm:5000}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-mock-llm}
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app # live code reload (uvicorn --reload is optional)
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  web:
+    # Vite dev server serving the React + Tailwind PWA. node_modules lives in
+    # an anonymous volume so the host tree stays clean.
+    image: node:20-alpine
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    name: nightingale_pgdata
