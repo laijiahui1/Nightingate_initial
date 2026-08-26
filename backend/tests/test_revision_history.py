@@ -48,9 +48,9 @@ async def test_revert_restores_prior_state(clinician_client, db, entries):
         "SELECT body FROM entry_version WHERE entry_id = %s AND version = 1",
         (entry_id,),
     ).fetchone()[0]
-    version_before = db.execute(
-        "SELECT version FROM entry WHERE id = %s", (entry_id,)
-    ).fetchone()[0]
+    version_before = db.execute("SELECT version FROM entry WHERE id = %s", (entry_id,)).fetchone()[
+        0
+    ]
 
     resp = await clinician_client.post(
         f"/api/entries/{entry_id}/revert",
@@ -73,7 +73,9 @@ async def test_audit_log_shows_who_changed_what_metadata_only(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'audit_log'"
     ).fetchall()
     col_names = {c[0] for c in cols}
-    assert not {"body", "content", "text", "note"} & col_names, "audit_log schema stores note content"
+    assert not {"body", "content", "text", "note"} & col_names, (
+        "audit_log schema stores note content"
+    )
 
     entry_id = entries["e3_care_plan"]
     resp = await clinician_client.put(

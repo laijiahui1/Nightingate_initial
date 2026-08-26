@@ -95,9 +95,7 @@ def build_prompt(
     the summary can be linked back to its source session/segment.
     """
     if scribe_type not in _SCRIBE_SYSTEM_PROMPTS:
-        raise ValueError(
-            f"unknown scribe_type {scribe_type!r}; expected one of {SCRIBE_TYPES}"
-        )
+        raise ValueError(f"unknown scribe_type {scribe_type!r}; expected one of {SCRIBE_TYPES}")
 
     metadata: dict[str, object] = {}
     if source_type:
@@ -121,6 +119,7 @@ def build_prompt(
 # ---------------------------------------------------------------------------
 # Mock + live providers
 # ---------------------------------------------------------------------------
+
 
 def _mock_response(prompt_hash: str, mask: Iterable[Mapping[str, object]]) -> str:
     """Deterministic canned output keyed by the prompt hash.
@@ -206,6 +205,7 @@ def _log_llm_call(
 # ---------------------------------------------------------------------------
 # Public gateway
 # ---------------------------------------------------------------------------
+
 
 def chat(
     messages: list[dict[str, str]],

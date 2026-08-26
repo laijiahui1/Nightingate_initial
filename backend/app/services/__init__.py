@@ -13,6 +13,7 @@ Re-export the two most common entry points for convenient imports:
 ``from app.services import redact, chat``.
 """
 
+from app.services.llm_gateway import LLMGatewayError, build_prompt, chat
 from app.services.redaction import (
     Redactor,
     contains_phi,
@@ -21,7 +22,6 @@ from app.services.redaction import (
     restore,
     scrub,
 )
-from app.services.llm_gateway import LLMGatewayError, build_prompt, chat
 
 __all__ = [
     "Redactor",

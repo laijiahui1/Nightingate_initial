@@ -22,9 +22,13 @@ def decay_entries(
     if actor.role != "admin":
         raise HTTPException(status_code=403, detail="admin only")
 
-    result = db.execute(
-        text("SELECT decay_old_entries(:days) AS decayed"),
-        {"days": payload.days},
-    ).mappings().first()
+    result = (
+        db.execute(
+            text("SELECT decay_old_entries(:days) AS decayed"),
+            {"days": payload.days},
+        )
+        .mappings()
+        .first()
+    )
     db.commit()
     return {"decayed": result["decayed"]}

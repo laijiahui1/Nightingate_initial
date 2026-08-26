@@ -62,10 +62,8 @@ def _uid(key: str) -> uuid.UUID:
     return uuid.uuid5(_NS, f"nightingale.seed:{key}")
 
 
-def _utc(
-    year: int, month: int, day: int, hour: int = 0, minute: int = 0
-) -> dt.datetime:
-    return dt.datetime(year, month, day, hour, minute, tzinfo=dt.timezone.utc)
+def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> dt.datetime:
+    return dt.datetime(year, month, day, hour, minute, tzinfo=dt.UTC)
 
 
 # Fixed dates the brief requires to be present in the timeline.
@@ -76,6 +74,7 @@ DATE_SCENARIO_C = "2026-02-06"  # Scenario C: longitudinal history + highlight l
 # ---------------------------------------------------------------------------
 # Small DB helpers
 # ---------------------------------------------------------------------------
+
 
 def _database_url() -> str:
     """Return the bootstrap connection URL (superuser), normalized for psycopg v3."""
@@ -147,6 +146,7 @@ def _char_diff(old: str, new: str) -> dict[str, object]:
 # Seed state: holds every generated id so downstream rows can reference it
 # ---------------------------------------------------------------------------
 
+
 class SeedState:
     def __init__(self, conn: psycopg.Connection) -> None:
         self.conn = conn
@@ -208,6 +208,7 @@ def _reset(conn: psycopg.Connection, clinic_ids: list[uuid.UUID]) -> None:
 # ---------------------------------------------------------------------------
 # Step 2: clinics, users (all four roles), patients
 # ---------------------------------------------------------------------------
+
 
 def _seed_clinics(state: SeedState) -> None:
     rows = {
@@ -366,6 +367,7 @@ def _seed_patients(state: SeedState) -> None:
 # Step 3: provenance registry (the provenance_pointer target)
 # ---------------------------------------------------------------------------
 
+
 def _seed_provenance(state: SeedState) -> None:
     rows = {
         "prov_doctor_2025": {
@@ -482,6 +484,7 @@ def _seed_provenance(state: SeedState) -> None:
 # ---------------------------------------------------------------------------
 # Step 4: entries — the longitudinal timeline (fixed dates, manual + AI)
 # ---------------------------------------------------------------------------
+
 
 def _insert_entry(
     state: SeedState,
@@ -940,6 +943,7 @@ def _seed_entries(state: SeedState) -> None:
 # Step 5: ai_scribed_note rows (1:1 with system-authored entries)
 # ---------------------------------------------------------------------------
 
+
 def _seed_ai_notes(state: SeedState) -> None:
     rows = {
         "e2_ai_doctor": {
@@ -1056,6 +1060,7 @@ def _seed_ai_notes(state: SeedState) -> None:
 # Step 6: entry_entity (tagged clinical entities -> risk + learning)
 # ---------------------------------------------------------------------------
 
+
 def _seed_entities(state: SeedState) -> None:
     rows: list[tuple[str, str, str, str, dt.datetime]] = [
         # (entry_key, entity_type, entity_value, created_by, ts)
@@ -1095,6 +1100,7 @@ def _seed_entities(state: SeedState) -> None:
 # ---------------------------------------------------------------------------
 # Step 7: comments (resolved / open / @mention / patient-facing reply) + mentions
 # ---------------------------------------------------------------------------
+
 
 def _seed_comments_and_mentions(state: SeedState) -> None:
     comments = {
@@ -1190,6 +1196,7 @@ def _seed_comments_and_mentions(state: SeedState) -> None:
 # Step 8: tasks (needs lab order / waiting nurse follow-up / a done one)
 # ---------------------------------------------------------------------------
 
+
 def _seed_tasks(state: SeedState) -> None:
     rows = {
         "t_lab_order": {
@@ -1247,6 +1254,7 @@ def _seed_tasks(state: SeedState) -> None:
 # ---------------------------------------------------------------------------
 # Step 9: highlights (risk_reason + provenance_pointer + exact span)
 # ---------------------------------------------------------------------------
+
 
 def _seed_highlights(state: SeedState) -> None:
     rows = [
@@ -1326,9 +1334,7 @@ def _seed_highlights(state: SeedState) -> None:
     ]
     for item in rows:
         entry_id = item["entry_id"]
-        body = state.conn.execute(
-            "SELECT body FROM entry WHERE id = %s", (entry_id,)
-        ).fetchone()[0]
+        body = state.conn.execute("SELECT body FROM entry WHERE id = %s", (entry_id,)).fetchone()[0]
         offset_start, offset_end = _quote_offsets(body, item["quote"])
         row = {
             "id": item["id"],
@@ -1360,6 +1366,7 @@ def _seed_highlights(state: SeedState) -> None:
 # ---------------------------------------------------------------------------
 # Step 10: learning interactions + weights (persisted self-learning demo)
 # ---------------------------------------------------------------------------
+
 
 def _seed_learning(state: SeedState) -> None:
     interactions = [
@@ -1437,11 +1444,10 @@ def _seed_learning(state: SeedState) -> None:
 # Step 11: entry_version snapshots (v1/v2 for the care-plan entry) + glance
 # ---------------------------------------------------------------------------
 
+
 def _seed_entry_versions(state: SeedState) -> None:
     v1_body = (
-        "1. Amlodipine 5 mg OD.\n"
-        "2. Ambulatory BP monitoring for 7 days.\n"
-        "3. Review in 4 weeks."
+        "1. Amlodipine 5 mg OD.\n2. Ambulatory BP monitoring for 7 days.\n3. Review in 4 weeks."
     )
     v2_body = (
         "1. Amlodipine 5 mg OD.\n"
@@ -1485,15 +1491,14 @@ def _seed_entry_versions(state: SeedState) -> None:
 def _recompute_glances(state: SeedState) -> None:
     """Precompute the patient_glance top-card via the SECURITY DEFINER function."""
     for patient_key in state.patients:
-        state.conn.execute(
-            "SELECT recompute_glance(%s)", (state.patients[patient_key],)
-        )
+        state.conn.execute("SELECT recompute_glance(%s)", (state.patients[patient_key],))
         state.bump("glances")
 
 
 # ---------------------------------------------------------------------------
 # Step 12: PHI self-check over every AI-scribed body (redaction round-trip)
 # ---------------------------------------------------------------------------
+
 
 def _verify_phi(state: SeedState) -> None:
     failures: list[str] = []
@@ -1505,14 +1510,13 @@ def _verify_phi(state: SeedState) -> None:
         if restore(redacted, mapping) != body:
             failures.append(f"{entry_key}: restore(redact(body)) != body")
     if failures:
-        raise AssertionError(
-            "PHI self-check failed:\n  " + "\n  ".join(failures)
-        )
+        raise AssertionError("PHI self-check failed:\n  " + "\n  ".join(failures))
 
 
 # ---------------------------------------------------------------------------
 # Orchestration + summary
 # ---------------------------------------------------------------------------
+
 
 def _seed(conn: psycopg.Connection) -> SeedState:
     state = SeedState(conn)

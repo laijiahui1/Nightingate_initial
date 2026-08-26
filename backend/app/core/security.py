@@ -41,7 +41,7 @@ def create_access_token(
 ) -> str:
     """Create a signed JWT carrying the role claims the API depends on."""
     settings = get_settings()
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     if expires_delta is None:
         expires_delta = dt.timedelta(minutes=settings.jwt_expire_minutes)
 

@@ -104,9 +104,7 @@ def set_app_context(
     """
     role_class = ROLE_CLASS_BY_NAME.get(role, role)
     if role_class not in ROLE_CLASS_BY_NAME.values():
-        raise ValueError(
-            f"unknown role {role!r}; expected one of {sorted(ROLE_CLASS_BY_NAME)}"
-        )
+        raise ValueError(f"unknown role {role!r}; expected one of {sorted(ROLE_CLASS_BY_NAME)}")
 
     user_id_str = _assert_uuid(user_id, "user_id")
     clinic_id_str = _assert_uuid(clinic_id, "clinic_id")

@@ -68,10 +68,14 @@ def _patient_visible(db: Session, patient_id: uuid.UUID) -> None:
 
 
 def _existing_quotes(db: Session, entry_id: uuid.UUID) -> set[str]:
-    rows = db.execute(
-        text("SELECT quoted_text FROM highlight WHERE entry_id = :eid"),
-        {"eid": str(entry_id)},
-    ).mappings().all()
+    rows = (
+        db.execute(
+            text("SELECT quoted_text FROM highlight WHERE entry_id = :eid"),
+            {"eid": str(entry_id)},
+        )
+        .mappings()
+        .all()
+    )
     return {r["quoted_text"] for r in rows}
 
 
@@ -85,17 +89,21 @@ def list_highlights(
         raise HTTPException(status_code=403, detail="highlights are clinical-only")
     _patient_visible(db, patient_id)
 
-    rows = db.execute(
-        text(
-            f"""
+    rows = (
+        db.execute(
+            text(
+                f"""
             SELECT {_HL_COLS}
             FROM highlight
             WHERE patient_id = :pid
             ORDER BY CASE status WHEN 'suggested' THEN 0 ELSE 1 END, created_at DESC
             """
-        ),
-        {"pid": str(patient_id)},
-    ).mappings().all()
+            ),
+            {"pid": str(patient_id)},
+        )
+        .mappings()
+        .all()
+    )
     return {"highlights": [HighlightSummary(**dict(r)).model_dump() for r in rows]}
 
 
@@ -112,16 +120,20 @@ def generate_highlights(
 
     # Read the source entry AS THE CALLER (RLS-scoped); the pipeline role has no
     # SELECT on entry, so the span is computed here in Python.
-    entry = db.execute(
-        text(
-            """
+    entry = (
+        db.execute(
+            text(
+                """
             SELECT id, body, provenance_id
             FROM entry
             WHERE id = :eid AND patient_id = :pid AND clinic_id = app_clinic_id()
             """
-        ),
-        {"eid": str(payload.entry_id), "pid": str(patient_id)},
-    ).mappings().first()
+            ),
+            {"eid": str(payload.entry_id), "pid": str(patient_id)},
+        )
+        .mappings()
+        .first()
+    )
     if entry is None:
         raise HTTPException(status_code=404, detail="entry not found")
 
@@ -137,9 +149,10 @@ def generate_highlights(
     if phrase is None:
         # Idempotent re-generate: surface the highest-risk existing suggested
         # highlight for this entry instead of spamming duplicates.
-        existing = db.execute(
-            text(
-                f"""
+        existing = (
+            db.execute(
+                text(
+                    f"""
                 SELECT {_HL_COLS}
                 FROM highlight
                 WHERE entry_id = :eid AND status = 'suggested'
@@ -148,9 +161,12 @@ def generate_highlights(
                     WHEN 'medium' THEN 2 ELSE 3 END, confidence DESC NULLS LAST
                 LIMIT 1
                 """
-            ),
-            {"eid": str(payload.entry_id)},
-        ).mappings().first()
+                ),
+                {"eid": str(payload.entry_id)},
+            )
+            .mappings()
+            .first()
+        )
         if existing is None:
             raise HTTPException(status_code=422, detail="no risk span detected in the source entry")
         return HighlightSummary(**dict(existing))
@@ -224,17 +240,13 @@ def generate_highlights(
                 "hid": str(highlight_id),
                 "pid": str(patient_id),
                 "clinic": str(actor.clinic_id),
-                "metadata": json.dumps(
-                    {"entry_id": str(payload.entry_id), "reason": reason}
-                ),
+                "metadata": json.dumps({"entry_id": str(payload.entry_id), "reason": reason}),
             },
         )
 
         # Restore the caller's role class + role GUC before commit.
         db.execute(text(f"SET LOCAL ROLE {ROLE_CLASS_BY_NAME[actor.role]}"))
-        db.execute(
-            text("SELECT set_config('app.role', :role, true)"), {"role": actor.role}
-        )
+        db.execute(text("SELECT set_config('app.role', :role, true)"), {"role": actor.role})
         db.commit()
     except HTTPException:
         db.rollback()
@@ -246,10 +258,14 @@ def generate_highlights(
     # commit() ended the transaction and reset SET LOCAL ROLE — re-apply the
     # caller's context so the re-SELECT runs under RLS as the caller.
     set_app_context(db, role=actor.role, user_id=actor.user_id, clinic_id=actor.clinic_id)
-    row = db.execute(
-        text(f"SELECT {_HL_COLS} FROM highlight WHERE id = :hid"),
-        {"hid": str(highlight_id)},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text(f"SELECT {_HL_COLS} FROM highlight WHERE id = :hid"),
+            {"hid": str(highlight_id)},
+        )
+        .mappings()
+        .first()
+    )
     return HighlightSummary(**dict(row))
 
 
@@ -261,16 +277,20 @@ def _resolve_highlight(
     new_status: str,
 ) -> HighlightSummary:
     """Shared accept/reject transition: suggested -> accepted|rejected."""
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT status, patient_id, entry_id
             FROM highlight
             WHERE id = :hid AND clinic_id = app_clinic_id() AND patient_id = :pid
             """
-        ),
-        {"hid": str(highlight_id), "pid": str(patient_id)},
-    ).mappings().first()
+            ),
+            {"hid": str(highlight_id), "pid": str(patient_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="highlight not found")
     if row["status"] != "suggested":
@@ -319,10 +339,14 @@ def _resolve_highlight(
     db.commit()
 
     set_app_context(db, role=actor.role, user_id=actor.user_id, clinic_id=actor.clinic_id)
-    updated = db.execute(
-        text(f"SELECT {_HL_COLS} FROM highlight WHERE id = :hid"),
-        {"hid": str(highlight_id)},
-    ).mappings().first()
+    updated = (
+        db.execute(
+            text(f"SELECT {_HL_COLS} FROM highlight WHERE id = :hid"),
+            {"hid": str(highlight_id)},
+        )
+        .mappings()
+        .first()
+    )
     return HighlightSummary(**dict(updated))
 
 
@@ -361,9 +385,10 @@ def list_suggestions(
         raise HTTPException(status_code=403, detail="suggestions are clinical-only")
     _patient_visible(db, patient_id)
 
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT ee.entry_id, ee.entity_type, ee.entity_value,
                    ('entity:' || ee.entity_type || ':' || ee.entity_value) AS feature_key,
                    COALESCE(lw.weight, 0.0) AS score,
@@ -379,7 +404,10 @@ def list_suggestions(
              ORDER BY score DESC, ee.entity_value ASC
              LIMIT 20
             """
-        ),
-        {"pid": str(patient_id), "q": q},
-    ).mappings().all()
+            ),
+            {"pid": str(patient_id), "q": q},
+        )
+        .mappings()
+        .all()
+    )
     return {"suggestions": [Suggestion(**dict(r)).model_dump() for r in rows]}

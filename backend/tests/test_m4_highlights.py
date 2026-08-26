@@ -13,9 +13,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_accept_transitions_and_learns_positive(
-    clinician_client, db, patients, entries
-):
+async def test_accept_transitions_and_learns_positive(clinician_client, db, patients, entries):
     """Accept moves suggested->accepted and pushes entity weights positive."""
     patient_id = patients["Alice Tan"]
     source_entry = entries["e2_ai_doctor"]
@@ -45,9 +43,7 @@ async def test_accept_transitions_and_learns_positive(
 
 
 @pytest.mark.asyncio
-async def test_reject_transitions_and_learns_negative(
-    clinician_client, db, patients, entries
-):
+async def test_reject_transitions_and_learns_negative(clinician_client, db, patients, entries):
     """Reject moves suggested->rejected and pushes entity weights negative."""
     patient_id = patients["Alice Tan"]
     source_entry = entries["e2_ai_doctor"]
@@ -74,9 +70,7 @@ async def test_reject_transitions_and_learns_negative(
 
 
 @pytest.mark.asyncio
-async def test_accept_on_resolved_highlight_is_409(
-    clinician_client, patients, highlights
-):
+async def test_accept_on_resolved_highlight_is_409(clinician_client, patients, highlights):
     """Accepting an already-accepted highlight is rejected 409."""
     patient_id = patients["Alice Tan"]
     resolved_id = highlights["h2_penicillin"]  # seeded as status='accepted'
@@ -88,9 +82,7 @@ async def test_accept_on_resolved_highlight_is_409(
 
 
 @pytest.mark.asyncio
-async def test_duplicate_generate_does_not_duplicate_spans(
-    clinician_client, db, patients, entries
-):
+async def test_duplicate_generate_does_not_duplicate_spans(clinician_client, db, patients, entries):
     """Generating twice never creates a second span for the same quoted_text."""
     patient_id = patients["Alice Tan"]
     source_entry = entries["e2_ai_doctor"]

@@ -103,35 +103,35 @@ def _name_pattern() -> str:
 def _nric_pattern() -> str:
     return (
         # Singapore NRIC/FIN: prefix letter + 7 digits + checksum letter.
-        rf"(?:\b[STFGM]\d{{7}}[A-Za-z]\b)"
+        r"(?:\b[STFGM]\d{7}[A-Za-z]\b)"
         # Malaysian NRIC: 6-2-4 digits (YYYYMMDD-PB-XXXX).
-        rf"|(?:\b\d{{6}}-\d{{2}}-\d{{4}}\b)"
+        r"|(?:\b\d{6}-\d{2}-\d{4}\b)"
     )
 
 
 def _id_pattern() -> str:
     return (
         # Passport / birth-certificate style: letter + 8 digits.
-        rf"(?:\b[A-Z]\d{{8}}\b)"
+        r"(?:\b[A-Z]\d{8}\b)"
         # Generic 9-digit identifier fallback.
-        rf"|(?:\b\d{{9}}\b)"
+        r"|(?:\b\d{9}\b)"
     )
 
 
 def _phone_pattern() -> str:
     return (
         # Singapore international: +65 9123 4567 / +65-8123-4567.
-        rf"(?:\+?65[-\s]?\d{{4}}[-\s]?\d{{4}})"
+        r"(?:\+?65[-\s]?\d{4}[-\s]?\d{4})"
         # Malaysia international: +60 12 345 6789.
-        rf"|(?:\+?60[-\s]?\d{{1,2}}[-\s]?\d{{3,4}}[-\s]?\d{{3,4}})"
+        r"|(?:\+?60[-\s]?\d{1,2}[-\s]?\d{3,4}[-\s]?\d{3,4})"
         # Singapore mobile: 8xxxxxxx / 9xxxxxxx.
-        rf"|(?:(?<!\d)(?:8|9)\d{{7}}(?!\d))"
+        r"|(?:(?<!\d)(?:8|9)\d{7}(?!\d))"
         # Singapore landline: 6xxxxxxx.
-        rf"|(?:(?<!\d)6\d{{7}}(?!\d))"
+        r"|(?:(?<!\d)6\d{7}(?!\d))"
         # Split 4+4 with a space/hyphen, first group starting 6/8/9 (SG
         # mobile/landline written as "9123 4567"). The [689] guard keeps
         # dates/quantities like "2026 0826" or "7981 4523" out.
-        rf"|(?:(?<!\d)(?:[689]\d{{3}})[-\s]\d{{4}}(?!\d))"
+        r"|(?:(?<!\d)(?:[689]\d{3})[-\s]\d{4}(?!\d))"
     )
 
 
@@ -248,7 +248,7 @@ def scrub(text: str) -> str:
 
 
 def redaction_mask(
-    mapping: Mapping[str, dict[str, object]] | dict[str, dict[str, object]]
+    mapping: Mapping[str, dict[str, object]] | dict[str, dict[str, object]],
 ) -> list[dict[str, object]]:
     """Summarize a mapping as ``[{category, count}]`` metadata (never PHI).
 

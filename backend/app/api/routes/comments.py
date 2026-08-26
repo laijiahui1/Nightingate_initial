@@ -30,9 +30,17 @@ def _author_role_for(actor: Actor) -> str:
     return actor.role
 
 
-def _comment_summary(returned: dict, *, entry_id: uuid.UUID, parent_id: uuid.UUID | None,
-                     patient_id: uuid.UUID, author_id: uuid.UUID, author_role: str,
-                     body: str, visibility: str) -> dict:
+def _comment_summary(
+    returned: dict,
+    *,
+    entry_id: uuid.UUID,
+    parent_id: uuid.UUID | None,
+    patient_id: uuid.UUID,
+    author_id: uuid.UUID,
+    author_role: str,
+    body: str,
+    visibility: str,
+) -> dict:
     return {
         "id": returned["id"],
         "entry_id": entry_id,
@@ -58,21 +66,23 @@ def create_comment(
     actor: Actor = Depends(get_current_actor),
 ) -> dict:
     # 1. Pre-check the entry is visible to the caller (404, not a leak).
-    row = db.execute(
-        text(
-            "SELECT id, patient_id FROM entry WHERE id = :eid AND clinic_id = app_clinic_id()"
-        ),
-        {"eid": str(entry_id)},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text(
+                "SELECT id, patient_id FROM entry WHERE id = :eid AND clinic_id = app_clinic_id()"
+            ),
+            {"eid": str(entry_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="entry not found")
 
     patient_id = row["patient_id"]
     author_role = _author_role_for(actor)
     visibility = (
-        "patient_visible"
-        if actor.role == "patient"
-        else (payload.visibility or "internal")
+        "patient_visible" if actor.role == "patient" else (payload.visibility or "internal")
     )
 
     # 2. Resolve @mentions (clinical roles only). Never run for patients.
@@ -80,47 +90,55 @@ def create_comment(
     if actor.role != "patient":
         tokens = _MENTION_RE.findall(payload.body)
         for token in tokens:
-            match = db.execute(
-                text(
-                    """
+            match = (
+                db.execute(
+                    text(
+                        """
                     SELECT id FROM users
                     WHERE clinic_id = app_clinic_id() AND is_active AND id <> :me
                       AND (lower(email) LIKE lower(:email_prefix)
                            OR lower(full_name) LIKE lower(:name_prefix))
                     """
-                ),
-                {
-                    "me": str(actor.user_id),
-                    "email_prefix": f"{token}@%",
-                    "name_prefix": f"{token}%",
-                },
-            ).mappings().all()
+                    ),
+                    {
+                        "me": str(actor.user_id),
+                        "email_prefix": f"{token}@%",
+                        "name_prefix": f"{token}%",
+                    },
+                )
+                .mappings()
+                .all()
+            )
             for m in match:
                 if m["id"] not in mentioned_ids:
                     mentioned_ids.append(m["id"])
 
     try:
         # 3. Insert the comment (RETURNING works for all four roles).
-        inserted = db.execute(
-            text(
-                """
+        inserted = (
+            db.execute(
+                text(
+                    """
                 INSERT INTO comment(clinic_id, patient_id, entry_id, parent_id,
                                     author_id, author_role, body, visibility)
                 VALUES (:clinic, :pid, :eid, :parent, :uid, :author_role, :body, :vis)
                 RETURNING id, created_at, updated_at
                 """
-            ),
-            {
-                "clinic": str(actor.clinic_id),
-                "pid": str(patient_id),
-                "eid": str(entry_id),
-                "parent": str(payload.parent_id) if payload.parent_id else None,
-                "uid": str(actor.user_id),
-                "author_role": author_role,
-                "body": payload.body,
-                "vis": visibility,
-            },
-        ).mappings().first()
+                ),
+                {
+                    "clinic": str(actor.clinic_id),
+                    "pid": str(patient_id),
+                    "eid": str(entry_id),
+                    "parent": str(payload.parent_id) if payload.parent_id else None,
+                    "uid": str(actor.user_id),
+                    "author_role": author_role,
+                    "body": payload.body,
+                    "vis": visibility,
+                },
+            )
+            .mappings()
+            .first()
+        )
 
         # 4. Insert mention rows (one notification per @per comment).
         for mentioned_id in mentioned_ids:
@@ -172,16 +190,20 @@ def create_comment(
 
 
 def _set_resolved(db: Session, actor: Actor, comment_id: uuid.UUID, resolved: bool) -> dict:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT author_role, patient_id
             FROM comment
             WHERE id = :cid AND clinic_id = app_clinic_id()
             """
-        ),
-        {"cid": str(comment_id)},
-    ).mappings().first()
+            ),
+            {"cid": str(comment_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="comment not found")
 
@@ -199,29 +221,37 @@ def _set_resolved(db: Session, actor: Actor, comment_id: uuid.UUID, resolved: bo
 
     try:
         if resolved:
-            updated = db.execute(
-                text(
-                    """
+            updated = (
+                db.execute(
+                    text(
+                        """
                     UPDATE comment
                     SET status = 'resolved', resolved_by = :resolved_by, resolved_at = now()
                     WHERE id = :cid
                     RETURNING id, status, resolved_by, resolved_at
                     """
-                ),
-                {"resolved_by": str(actor.user_id), "cid": str(comment_id)},
-            ).mappings().first()
+                    ),
+                    {"resolved_by": str(actor.user_id), "cid": str(comment_id)},
+                )
+                .mappings()
+                .first()
+            )
         else:
-            updated = db.execute(
-                text(
-                    """
+            updated = (
+                db.execute(
+                    text(
+                        """
                     UPDATE comment
                     SET status = 'open', resolved_by = NULL, resolved_at = NULL
                     WHERE id = :cid
                     RETURNING id, status, resolved_by, resolved_at
                     """
-                ),
-                {"cid": str(comment_id)},
-            ).mappings().first()
+                    ),
+                    {"cid": str(comment_id)},
+                )
+                .mappings()
+                .first()
+            )
 
         audit(
             db,

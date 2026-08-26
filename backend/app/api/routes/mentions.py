@@ -28,9 +28,10 @@ def unread_mentions(
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="mentions are clinical-only")
 
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT m.id, m.comment_id, m.mentioned_user_id, m.created_by,
                    m.read_at, m.created_at,
                    c.body AS comment_body, c.author_role AS comment_author_role,
@@ -43,8 +44,11 @@ def unread_mentions(
             WHERE m.mentioned_user_id = app_user_id() AND m.read_at IS NULL
             ORDER BY m.created_at DESC
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
 
     result = []
     for r in rows:
@@ -80,17 +84,21 @@ def mark_mention_read(
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="mentions are clinical-only")
 
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             UPDATE mention
             SET read_at = now()
             WHERE id = :mid AND mentioned_user_id = app_user_id()
             RETURNING id, read_at
             """
-        ),
-        {"mid": str(mention_id)},
-    ).mappings().first()
+            ),
+            {"mid": str(mention_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="mention not found")
     db.commit()

@@ -23,14 +23,10 @@ async def test_different_sections_do_not_clobber_each_other(
 ):
     """Concurrent edits to DIFFERENT sections both survive (no lost update)."""
     staff_entry = entries["e6_lab_handoff"]  # section='staff_handoff', authored by staff
-    clin_entry = entries["e9_review"]        # section='plan', authored by clinician
+    clin_entry = entries["e9_review"]  # section='plan', authored by clinician
 
-    staff_body_v1 = db.execute(
-        "SELECT body FROM entry WHERE id = %s", (staff_entry,)
-    ).fetchone()[0]
-    clin_body_v1 = db.execute(
-        "SELECT body FROM entry WHERE id = %s", (clin_entry,)
-    ).fetchone()[0]
+    staff_body_v1 = db.execute("SELECT body FROM entry WHERE id = %s", (staff_entry,)).fetchone()[0]
+    clin_body_v1 = db.execute("SELECT body FROM entry WHERE id = %s", (clin_entry,)).fetchone()[0]
 
     # Both edits are issued "concurrently" — different sections, independent rows.
     staff_resp = await staff_client.put(
@@ -45,12 +41,8 @@ async def test_different_sections_do_not_clobber_each_other(
     assert clin_resp.status_code == 200, "clinician edit failed"
 
     # Neither edit overwrote the other.
-    staff_body_v2 = db.execute(
-        "SELECT body FROM entry WHERE id = %s", (staff_entry,)
-    ).fetchone()[0]
-    clin_body_v2 = db.execute(
-        "SELECT body FROM entry WHERE id = %s", (clin_entry,)
-    ).fetchone()[0]
+    staff_body_v2 = db.execute("SELECT body FROM entry WHERE id = %s", (staff_entry,)).fetchone()[0]
+    clin_body_v2 = db.execute("SELECT body FROM entry WHERE id = %s", (clin_entry,)).fetchone()[0]
     assert "- Staff: chased lab" in staff_body_v2, "staff edit was lost"
     assert "- Cardiology referral" in clin_body_v2, "clinician edit was lost"
 
