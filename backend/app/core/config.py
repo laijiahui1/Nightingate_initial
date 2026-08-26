@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     # credentials that back `database_url` and are the target of the
     # production fail-fast check below.
     database_url: str = (
-        "postgresql+psycopg://app_nightingale:dev_app_password_change_me@db:5432/nightingale"
+        "postgresql+psycopg://app_nightingale:dev_app_password_change_me"
+        "@db:5432/nightingale"
     )  # DATABASE_URL
     app_db_user: str = "app_nightingale"  # APP_DB_USER
     app_db_password: str = "dev_app_password_change_me"  # APP_DB_PASSWORD

@@ -52,12 +52,14 @@ def _resolve_role_arg(db: Session, entry_id: uuid.UUID, actor: Actor) -> str:
     Raises 404 when the entry is out of scope (cross-clinic / nonexistent) and
     403 when the caller's role cannot write the entry (write isolation).
     """
-    row = db.execute(
-        text(
-            "SELECT author_role FROM entry WHERE id = :id AND clinic_id = app_clinic_id()"
-        ),
-        {"id": str(entry_id)},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text("SELECT author_role FROM entry WHERE id = :id AND clinic_id = app_clinic_id()"),
+            {"id": str(entry_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="entry not found")
 
@@ -77,18 +79,22 @@ def entry_history(
 ) -> list[dict]:
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="entry history is clinical-only")
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, version, body, delta_from_prev, author_role, author_id,
                    change_summary, conflict_flag, conflict_of, created_at
             FROM entry_version
             WHERE entry_id = :eid
             ORDER BY version DESC
             """
-        ),
-        {"eid": str(entry_id)},
-    ).mappings().all()
+            ),
+            {"eid": str(entry_id)},
+        )
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -102,9 +108,7 @@ def edit_entry(
     role_arg = _resolve_role_arg(db, entry_id, actor)
     try:
         db.execute(
-            text(
-                "SELECT save_entry(:entry_id, :body, :base_version, :user_id, :role)"
-            ),
+            text("SELECT save_entry(:entry_id, :body, :base_version, :user_id, :role)"),
             {
                 "entry_id": str(entry_id),
                 "body": payload.body,
@@ -122,10 +126,14 @@ def edit_entry(
     # caller's role context so the re-SELECT runs under RLS as the caller (not as
     # the base app_nightingale role, which has no SELECT on entry).
     set_app_context(db, role=actor.role, user_id=actor.user_id, clinic_id=actor.clinic_id)
-    row = db.execute(
-        text("SELECT id, version, body, updated_at FROM entry WHERE id = :id"),
-        {"id": str(entry_id)},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text("SELECT id, version, body, updated_at FROM entry WHERE id = :id"),
+            {"id": str(entry_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return dict(row)
@@ -141,9 +149,7 @@ def revert_entry(
     role_arg = _resolve_role_arg(db, entry_id, actor)
     try:
         db.execute(
-            text(
-                "SELECT revert_entry(:entry_id, :target_version, :user_id, :role)"
-            ),
+            text("SELECT revert_entry(:entry_id, :target_version, :user_id, :role)"),
             {
                 "entry_id": str(entry_id),
                 "target_version": payload.target_version,
@@ -158,10 +164,14 @@ def revert_entry(
 
     # Re-apply the caller's role context after db.commit() reset SET LOCAL ROLE.
     set_app_context(db, role=actor.role, user_id=actor.user_id, clinic_id=actor.clinic_id)
-    row = db.execute(
-        text("SELECT id, version, body FROM entry WHERE id = :id"),
-        {"id": str(entry_id)},
-    ).mappings().first()
+    row = (
+        db.execute(
+            text("SELECT id, version, body FROM entry WHERE id = :id"),
+            {"id": str(entry_id)},
+        )
+        .mappings()
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="entry not found")
     return dict(row)
@@ -185,10 +195,14 @@ def restore_entry_route(
         raise HTTPException(status_code=404, detail="entry not found")
 
     try:
-        result = db.execute(
-            text("SELECT restore_entry(:eid) AS body"),
-            {"eid": str(entry_id)},
-        ).mappings().first()
+        result = (
+            db.execute(
+                text("SELECT restore_entry(:eid) AS body"),
+                {"eid": str(entry_id)},
+            )
+            .mappings()
+            .first()
+        )
         db.commit()
     except Exception as exc:
         db.rollback()

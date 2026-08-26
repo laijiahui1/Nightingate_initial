@@ -13,9 +13,7 @@ from app.db.session import get_db
 
 router = APIRouter()
 
-_TARGET_TYPES: frozenset[str] = frozenset(
-    {"entry", "comment", "highlight", "task", "patient"}
-)
+_TARGET_TYPES: frozenset[str] = frozenset({"entry", "comment", "highlight", "task", "patient"})
 
 
 @router.get("/audit")
@@ -30,16 +28,20 @@ def get_audit(
     if target_type not in _TARGET_TYPES:
         raise HTTPException(status_code=422, detail="invalid target_type")
 
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, target_type, target_id, version, actor_id, actor_role,
                    action, occurred_at
             FROM audit_log
             WHERE target_type = :tt AND target_id = :tid
             ORDER BY occurred_at DESC
             """
-        ),
-        {"tt": target_type, "tid": str(target_id)},
-    ).mappings().all()
+            ),
+            {"tt": target_type, "tid": str(target_id)},
+        )
+        .mappings()
+        .all()
+    )
     return {"rows": [dict(r) for r in rows]}

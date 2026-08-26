@@ -35,9 +35,10 @@ def _patient_visible(db: Session, patient_id: uuid.UUID) -> None:
 
 
 def list_tasks(db: Session, patient_id: uuid.UUID) -> list[dict]:
-    rows = db.execute(
-        text(
-            f"""
+    rows = (
+        db.execute(
+            text(
+                f"""
             SELECT {_TASK_COLUMNS}
             FROM task
             WHERE patient_id = :pid
@@ -45,9 +46,12 @@ def list_tasks(db: Session, patient_id: uuid.UUID) -> list[dict]:
                        WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2
                      END, created_at DESC
             """
-        ),
-        {"pid": str(patient_id)},
-    ).mappings().all()
+            ),
+            {"pid": str(patient_id)},
+        )
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -80,33 +84,35 @@ def create_task(
         {"aid": str(payload.assignee_id)},
     ).first()
     if assignee is None:
-        raise HTTPException(
-            status_code=422, detail="task assignee must belong to the task clinic"
-        )
+        raise HTTPException(status_code=422, detail="task assignee must belong to the task clinic")
 
     try:
-        inserted = db.execute(
-            text(
-                f"""
+        inserted = (
+            db.execute(
+                text(
+                    f"""
                 INSERT INTO task(clinic_id, patient_id, entry_id, assignee_id,
                                  assigner_id, title, description, status, priority, due_at)
                 VALUES (:clinic, :pid, :entry_id, :assignee_id, :uid, :title, :desc,
                         'open', :priority, :due_at)
                 RETURNING {_TASK_COLUMNS}
                 """
-            ),
-            {
-                "clinic": str(actor.clinic_id),
-                "pid": str(patient_id),
-                "entry_id": str(payload.entry_id) if payload.entry_id else None,
-                "assignee_id": str(payload.assignee_id),
-                "uid": str(actor.user_id),
-                "title": payload.title,
-                "desc": payload.description,
-                "priority": payload.priority,
-                "due_at": payload.due_at,
-            },
-        ).mappings().first()
+                ),
+                {
+                    "clinic": str(actor.clinic_id),
+                    "pid": str(patient_id),
+                    "entry_id": str(payload.entry_id) if payload.entry_id else None,
+                    "assignee_id": str(payload.assignee_id),
+                    "uid": str(actor.user_id),
+                    "title": payload.title,
+                    "desc": payload.description,
+                    "priority": payload.priority,
+                    "due_at": payload.due_at,
+                },
+            )
+            .mappings()
+            .first()
+        )
 
         audit(
             db,
@@ -139,12 +145,17 @@ def update_task(
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="task list is clinical-only")
 
-    pre = db.execute(
-        text(
-            "SELECT patient_id, status FROM task WHERE id = :tid AND clinic_id = app_clinic_id()"
-        ),
-        {"tid": str(task_id)},
-    ).mappings().first()
+    pre = (
+        db.execute(
+            text(
+                "SELECT patient_id, status FROM task WHERE id = :tid "
+                "AND clinic_id = app_clinic_id()"
+            ),
+            {"tid": str(task_id)},
+        )
+        .mappings()
+        .first()
+    )
     if pre is None:
         raise HTTPException(status_code=404, detail="task not found")
 
@@ -187,10 +198,16 @@ def update_task(
         return dict(pre)
 
     try:
-        updated = db.execute(
-            text(f"UPDATE task SET {', '.join(sets)} WHERE id = :tid RETURNING {_TASK_COLUMNS}"),
-            params,
-        ).mappings().first()
+        updated = (
+            db.execute(
+                text(
+                    f"UPDATE task SET {', '.join(sets)} WHERE id = :tid RETURNING {_TASK_COLUMNS}"
+                ),
+                params,
+            )
+            .mappings()
+            .first()
+        )
 
         audit(
             db,

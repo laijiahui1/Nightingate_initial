@@ -35,9 +35,7 @@ async def test_generated_highlight_provenance_resolves_to_span(
     assert hl.get("quoted_text"), "highlight must freeze the quoted text"
 
     # Resolve: the frozen span must slice the authored source body exactly.
-    body = db.execute(
-        "SELECT body FROM entry WHERE id = %s", (hl["entry_id"],)
-    ).fetchone()[0]
+    body = db.execute("SELECT body FROM entry WHERE id = %s", (hl["entry_id"],)).fetchone()[0]
     resolved = body[hl["offset_start"] : hl["offset_end"]]
     assert resolved == hl["quoted_text"], "provenance pointer did not resolve to a real span"
 
@@ -57,9 +55,7 @@ async def test_highlights_carry_risk_reason_and_resolvable_provenance(
     for hl in highlights:
         assert hl.get("risk_reason"), "highlight must carry a risk_reason"
         assert hl.get("provenance_id") and hl.get("entry_id"), "highlight missing provenance"
-        body = db.execute(
-            "SELECT body FROM entry WHERE id = %s", (hl["entry_id"],)
-        ).fetchone()[0]
+        body = db.execute("SELECT body FROM entry WHERE id = %s", (hl["entry_id"],)).fetchone()[0]
         assert body[hl["offset_start"] : hl["offset_end"]] == hl["quoted_text"], (
             "highlight provenance pointer is dangling"
         )

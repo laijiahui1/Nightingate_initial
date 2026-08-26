@@ -67,8 +67,7 @@ async def test_ai_scribe_ingestion(clinician_client, db, patients):
 
     entry_id = result["entry_id"]
     row = db.execute(
-        "SELECT redaction_confirmed, redaction_mask FROM ai_scribed_note "
-        "WHERE entry_id = %s",
+        "SELECT redaction_confirmed, redaction_mask FROM ai_scribed_note WHERE entry_id = %s",
         (entry_id,),
     ).fetchone()
     assert row is not None, "ai_scribed_note row was not persisted"
@@ -89,9 +88,7 @@ async def test_dev_login_roundtrip(test_client, seed_db):
     """Dev login issues a token for a seeded user; unknown email is 401."""
     from app.core.security import decode_access_token
 
-    resp = await test_client.post(
-        "/api/auth/login", json={"email": "priya.nair@meridian.demo"}
-    )
+    resp = await test_client.post("/api/auth/login", json={"email": "priya.nair@meridian.demo"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["token_type"] == "bearer"
@@ -99,9 +96,7 @@ async def test_dev_login_roundtrip(test_client, seed_db):
     claims = decode_access_token(body["access_token"])
     assert claims["role"] == "staff"
 
-    resp = await test_client.post(
-        "/api/auth/login", json={"email": "nobody@example.com"}
-    )
+    resp = await test_client.post("/api/auth/login", json={"email": "nobody@example.com"})
     assert resp.status_code == 401
 
 

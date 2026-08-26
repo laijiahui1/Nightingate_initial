@@ -20,14 +20,18 @@ def list_users(
     if actor.role == "patient":
         raise HTTPException(status_code=403, detail="user directory is clinical-only")
 
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, full_name, email, role
             FROM users
             WHERE clinic_id = app_clinic_id() AND is_active
             ORDER BY full_name
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]

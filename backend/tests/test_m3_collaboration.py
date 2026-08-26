@@ -19,9 +19,7 @@ async def test_comment_post_with_mention_creates_mention_row(
     priya_id = roles["staff"][0]
     body = "Please review this. @priya.nair to coordinate."
 
-    resp = await clinician_client.post(
-        f"/api/entries/{entry_id}/comments", json={"body": body}
-    )
+    resp = await clinician_client.post(f"/api/entries/{entry_id}/comments", json={"body": body})
     assert resp.status_code == 201, resp.text
     data = resp.json()
     assert data["body"] == body

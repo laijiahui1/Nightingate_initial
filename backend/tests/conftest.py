@@ -61,10 +61,14 @@ import contextlib
 import os
 import threading
 import urllib.parse
+from typing import TYPE_CHECKING
 
 import psycopg
 import pytest
 import pytest_asyncio
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 # ---------------------------------------------------------------------------
 # URL plumbing
@@ -101,7 +105,9 @@ def _db_name(url: str) -> str:
 
 def _with_db(url: str, dbname: str) -> str:
     parts = urllib.parse.urlsplit(url)
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, f"/{dbname}", parts.query, parts.fragment))
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, f"/{dbname}", parts.query, parts.fragment)
+    )
 
 
 def _app_url(admin_url: str, *, scheme: str | None = None) -> str:
@@ -213,7 +219,9 @@ def _build_state(admin_url: str) -> dict:
     """Query the seeded fixture DB and build the id maps used by the tests."""
     with psycopg.connect(admin_url) as conn:
         clinic = _scalar(conn, "SELECT id FROM clinic WHERE name = %s", ("Meridian Family Clinic",))
-        clinic_b = _scalar(conn, "SELECT id FROM clinic WHERE name = %s", ("Harbourview Medical Centre",))
+        clinic_b = _scalar(
+            conn, "SELECT id FROM clinic WHERE name = %s", ("Harbourview Medical Centre",)
+        )
 
         def _roles(cid: object) -> dict[str, tuple[object, object]]:
             out: dict[str, tuple[object, object]] = {}
@@ -221,7 +229,8 @@ def _build_state(admin_url: str) -> dict:
                 out[role] = (
                     _scalar(
                         conn,
-                        "SELECT id FROM users WHERE clinic_id = %s AND role = %s ORDER BY email LIMIT 1",
+                        "SELECT id FROM users WHERE clinic_id = %s AND role = %s "
+                        "ORDER BY email LIMIT 1",
                         (cid, role),
                     ),
                     cid,
@@ -302,7 +311,10 @@ def test_database() -> dict:
     app_sqlalchemy_url = _app_url(admin_test_url, scheme="postgresql+psycopg")
     maintenance_url = _with_db(admin_url, "postgres")
 
-    saved_env = {k: os.environ.get(k) for k in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "SEED_DATABASE_URL")}
+    saved_env = {
+        k: os.environ.get(k)
+        for k in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "SEED_DATABASE_URL")
+    }
     try:
         try:
             with psycopg.connect(maintenance_url, autocommit=True) as conn:
@@ -562,7 +574,7 @@ async def test_client(test_database: dict):
 async def role_client(test_database: dict, roles: dict[str, tuple[object, object]]):
     """Factory returning an httpx client carrying a JWT for a given role."""
 
-    async def _factory(role: str) -> "AsyncClient":
+    async def _factory(role: str) -> AsyncClient:
         from httpx import ASGITransport, AsyncClient
 
         from app.main import app

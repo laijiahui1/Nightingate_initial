@@ -40,8 +40,14 @@ _SCRIBE_TO_PROV_SOURCE: dict[str, str] = {
 }
 
 _PROV_SOURCES: frozenset[str] = frozenset(
-    {"ai_patient_session", "ai_doctor_consult", "ai_nurse_consult",
-     "manual_note", "voice_capture", "system"}
+    {
+        "ai_patient_session",
+        "ai_doctor_consult",
+        "ai_nurse_consult",
+        "manual_note",
+        "voice_capture",
+        "system",
+    }
 )
 
 _PIPELINE_VERSION = "m2-1.0"
@@ -57,18 +63,22 @@ def _patient_visible(db: Session, patient_id: uuid.UUID) -> None:
 
 
 def _list_entries(db: Session, patient_id: uuid.UUID, actor: Actor) -> list[dict]:
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, entry_type, title, body, author_role, section, visibility,
                    risk_level, version, status, created_at, updated_at
             FROM entry
             WHERE patient_id = :pid
             ORDER BY created_at DESC
             """
-        ),
-        {"pid": str(patient_id)},
-    ).mappings().all()
+            ),
+            {"pid": str(patient_id)},
+        )
+        .mappings()
+        .all()
+    )
     entries = [dict(r) for r in rows]
 
     # Attach AI-scribe metadata for system-authored entries. patient_role has no
@@ -79,16 +89,20 @@ def _list_entries(db: Session, patient_id: uuid.UUID, actor: Actor) -> list[dict
     if system_ids and actor.role != "patient":
         placeholders = ", ".join(f":id{i}" for i in range(len(system_ids)))
         params = {f"id{i}": system_ids[i] for i in range(len(system_ids))}
-        ai_rows = db.execute(
-            text(
-                f"""
+        ai_rows = (
+            db.execute(
+                text(
+                    f"""
                 SELECT entry_id, ai_note_type, model_name, redaction_confirmed
                 FROM ai_scribed_note
                 WHERE entry_id IN ({placeholders})
                 """
-            ),
-            params,
-        ).mappings().all()
+                ),
+                params,
+            )
+            .mappings()
+            .all()
+        )
         ai_map = {str(r["entry_id"]): dict(r) for r in ai_rows}
 
     for e in entries:
@@ -106,18 +120,22 @@ def _list_entries(db: Session, patient_id: uuid.UUID, actor: Actor) -> list[dict
 
 
 def _list_comments(db: Session, patient_id: uuid.UUID) -> list[dict]:
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, entry_id, parent_id, author_role, body, status, created_at,
                    patient_id, author_id, resolved_by, resolved_at, updated_at
             FROM comment
             WHERE patient_id = :pid
             ORDER BY created_at ASC
             """
-        ),
-        {"pid": str(patient_id)},
-    ).mappings().all()
+            ),
+            {"pid": str(patient_id)},
+        )
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -126,15 +144,19 @@ def list_patients(
     db: Session = Depends(get_db),
     actor: Actor = Depends(get_current_actor),
 ) -> list[dict]:
-    rows = db.execute(
-        text(
-            """
+    rows = (
+        db.execute(
+            text(
+                """
             SELECT id, mrn, display_name, date_of_birth, gender
             FROM patient
             ORDER BY display_name
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     return [dict(r) for r in rows]
 
 
@@ -182,17 +204,21 @@ def get_glance(
 
 
 def _read_glance(db: Session, patient_id: uuid.UUID) -> dict | None:
-    row = db.execute(
-        text(
-            """
+    row = (
+        db.execute(
+            text(
+                """
             SELECT patient_id, top_items, open_actions, risk_flags,
                    computed_at, invalidated
             FROM patient_glance
             WHERE patient_id = :pid
             """
-        ),
-        {"pid": str(patient_id)},
-    ).mappings().first()
+            ),
+            {"pid": str(patient_id)},
+        )
+        .mappings()
+        .first()
+    )
     return dict(row) if row is not None else None
 
 
@@ -218,17 +244,14 @@ def ai_scribe(
         result = chat(messages, purpose=payload.scribe_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    except LLMGatewayError as exc:
+    except LLMGatewayError:
         raise HTTPException(status_code=422, detail="llm gateway error") from None
 
     visibility = payload.visibility or (
-        "patient_visible"
-        if payload.scribe_type == "ai_patient_session_summary"
-        else "internal"
+        "patient_visible" if payload.scribe_type == "ai_patient_session_summary" else "internal"
     )
     title = (
-        f"{_SCRIBE_DISPLAY[payload.scribe_type]} — "
-        f"{dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d')}"
+        f"{_SCRIBE_DISPLAY[payload.scribe_type]} — {dt.datetime.now(dt.UTC).strftime('%Y-%m-%d')}"
     )
     source_type = payload.source_type or _SCRIBE_TO_PROV_SOURCE[payload.scribe_type]
     if source_type not in _PROV_SOURCES:
@@ -311,9 +334,7 @@ def ai_scribe(
 
         # 3. Restore the caller's role class + role GUC for any follow-up query.
         db.execute(text(f"SET LOCAL ROLE {ROLE_CLASS_BY_NAME[actor.role]}"))
-        db.execute(
-            text("SELECT set_config('app.role', :role, true)"), {"role": actor.role}
-        )
+        db.execute(text("SELECT set_config('app.role', :role, true)"), {"role": actor.role})
 
         db.commit()
     except HTTPException:

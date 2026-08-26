@@ -101,13 +101,13 @@ PHONE_CASES = [
 
 # (text, name_substring) — the name is embedded at a boundary / adjacency point.
 BOUNDARY_CASES = [
-    ("Alice Tan called the clinic.", "Alice Tan"),       # name at string start
-    ("The patient is Alice Tan", "Alice Tan"),           # name at string end
-    ("Alice Tan.", "Alice Tan"),                          # followed by "."
-    ("Alice Tan,", "Alice Tan"),                          # followed by ","
-    ("Alice Tan;", "Alice Tan"),                          # followed by ";"
-    ("Ask Priya to follow up.", "Priya"),                 # informal first-name reference
-    ("alice tan", "alice tan"),                           # lowercase (IGNORECASE master)
+    ("Alice Tan called the clinic.", "Alice Tan"),  # name at string start
+    ("The patient is Alice Tan", "Alice Tan"),  # name at string end
+    ("Alice Tan.", "Alice Tan"),  # followed by "."
+    ("Alice Tan,", "Alice Tan"),  # followed by ","
+    ("Alice Tan;", "Alice Tan"),  # followed by ";"
+    ("Ask Priya to follow up.", "Priya"),  # informal first-name reference
+    ("alice tan", "alice tan"),  # lowercase (IGNORECASE master)
 ]
 
 NO_PHI_BODIES = [
@@ -206,8 +206,13 @@ def test_no_phi_passthrough(body: str):
 def test_contains_phi_detects_all_seeded_cases():
     """contains_phi is True on every PHI-bearing battery input (pre-redaction)."""
     phony = (
-        FULL_NAMES + FIRST_NAMES + HONORIFIC_CASES + LABELLED_CASES
-        + NRIC_FIN_CASES + ID_NUMBER_CASES + PHONE_CASES
+        FULL_NAMES
+        + FIRST_NAMES
+        + HONORIFIC_CASES
+        + LABELLED_CASES
+        + NRIC_FIN_CASES
+        + ID_NUMBER_CASES
+        + PHONE_CASES
         + [text for text, _ in BOUNDARY_CASES]
     )
     for text in phony:

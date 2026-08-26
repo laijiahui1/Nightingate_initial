@@ -38,9 +38,7 @@ def _normalize(url: str) -> str:
 
 def _lookup_identity(email: str) -> dict | None:
     url = _normalize(
-        os.environ.get("MIGRATION_DATABASE_URL")
-        or os.environ.get("SEED_DATABASE_URL")
-        or ""
+        os.environ.get("MIGRATION_DATABASE_URL") or os.environ.get("SEED_DATABASE_URL") or ""
     )
     if not url:
         raise HTTPException(status_code=503, detail="login unavailable (no bootstrap DB URL)")

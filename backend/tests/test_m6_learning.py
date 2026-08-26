@@ -8,9 +8,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_suggestions_boost_after_accept(
-    clinician_client, db, patients, entries
-):
+async def test_suggestions_boost_after_accept(clinician_client, db, patients, entries):
     """A fresh entity scores 0 before any accept, then > 0 after one accept."""
     patient_id = patients["Alice Tan"]
     ai_entry = entries["e2_ai_doctor"]  # mentions amlodipine; entity is seeded
@@ -46,9 +44,7 @@ async def test_suggestions_boost_after_accept(
 
 
 @pytest.mark.asyncio
-async def test_reject_drives_weight_negative(
-    clinician_client, db, patients, entries
-):
+async def test_reject_drives_weight_negative(clinician_client, db, patients, entries):
     """Rejecting a highlight depresses the entry entity's learned weight."""
     patient_id = patients["Alice Tan"]
     dizzy_entry = entries["e8_session_dizziness"]  # entity: symptom/dizziness
@@ -91,9 +87,7 @@ async def test_admin_decay_and_restore(admin_client, db, entries):
     assert decay.status_code == 200
     assert decay.json()["decayed"] >= 1
 
-    row = db.execute(
-        "SELECT is_decayed, body FROM entry WHERE id = %s", (entry_id,)
-    ).fetchone()
+    row = db.execute("SELECT is_decayed, body FROM entry WHERE id = %s", (entry_id,)).fetchone()
     assert row is not None, "decayed entry vanished"
     assert row[0] is True, "entry should be flagged decayed"
     assert row[1] == "", "decayed entry body should be blanked"
@@ -102,9 +96,7 @@ async def test_admin_decay_and_restore(admin_client, db, entries):
     assert restore.status_code == 200
     assert restore.json()["body"], "restored body should be non-empty"
 
-    row2 = db.execute(
-        "SELECT is_decayed, body FROM entry WHERE id = %s", (entry_id,)
-    ).fetchone()
+    row2 = db.execute("SELECT is_decayed, body FROM entry WHERE id = %s", (entry_id,)).fetchone()
     assert row2 is not None
     assert row2[0] is False, "entry should be un-decayed after restore"
     assert row2[1], "entry body should be restored after restore"
@@ -118,9 +110,7 @@ async def test_staff_decay_forbidden(staff_client):
 
 
 @pytest.mark.asyncio
-async def test_admin_decay_is_clinic_scoped(
-    admin_client, admin_conn, clinic_b_id
-):
+async def test_admin_decay_is_clinic_scoped(admin_client, admin_conn, clinic_b_id):
     """A Meridian admin's decay must never archive a Harbourview entry.
 
     Regression for the M6 verifier HIGH finding: ``decay_old_entries`` ran

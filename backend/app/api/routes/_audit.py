@@ -55,6 +55,4 @@ def audit(
         },
     )
     db.execute(text(f"SET LOCAL ROLE {ROLE_CLASS_BY_NAME[actor.role]}"))
-    db.execute(
-        text("SELECT set_config('app.role', :role, true)"), {"role": actor.role}
-    )
+    db.execute(text("SELECT set_config('app.role', :role, true)"), {"role": actor.role})

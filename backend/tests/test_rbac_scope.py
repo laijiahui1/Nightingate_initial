@@ -94,9 +94,7 @@ async def test_patient_cannot_access_internal_comments(
 
 
 @pytest.mark.asyncio
-async def test_patient_cannot_access_raw_ai_notes(
-    role_conn, patient_client, patients, entries
-):
+async def test_patient_cannot_access_raw_ai_notes(role_conn, patient_client, patients, entries):
     """Patient must never read raw AI-scribed notes or the ai_scribed_note table."""
     patient_id = patients["Alice Tan"]
     ai_entries = [
@@ -126,9 +124,7 @@ async def test_patient_cannot_access_raw_ai_notes(
 
 
 @pytest.mark.asyncio
-async def test_cross_clinic_patient_read_denied(
-    role_conn, staff_client, patients_b
-):
+async def test_cross_clinic_patient_read_denied(role_conn, staff_client, patients_b):
     """Meridian staff must never read a Harbourview patient (404, not 200)."""
     mei_patient_id = patients_b["Mei Ling Chua"]  # Harbourview Medical Centre
 
@@ -145,9 +141,7 @@ async def test_cross_clinic_patient_read_denied(
 
 
 @pytest.mark.asyncio
-async def test_cross_clinic_entry_edit_and_revert_404(
-    admin_conn, clinic_b_id, clinician_client
-):
+async def test_cross_clinic_entry_edit_and_revert_404(admin_conn, clinic_b_id, clinician_client):
     """Meridian clinician editing a Harbourview entry → 404 (NOT 403, no leak).
 
     Covers both PUT /entries/{id} and POST /entries/{id}/revert: an out-of-scope
